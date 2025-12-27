@@ -1,8 +1,7 @@
 use crate::com::ComDispatch;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use noodle_core::error::{NoodleError, Result};
 use noodle_core::types::Email;
-use tracing::{info, warn};
 use windows::core::VARIANT;
 use windows::Win32::System::Com::IDispatch;
 

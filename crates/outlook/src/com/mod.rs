@@ -1,10 +1,10 @@
 use noodle_core::error::{NoodleError, Result};
-use std::ptr;
-use windows::core::{BSTR, HRESULT, PCWSTR, VARIANT};
+use windows::core::{BSTR, PCWSTR, VARIANT};
 use windows::Win32::System::Com::{
-    IDispatch, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET, DISPPARAMS,
+    IDispatch, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET, DISPPARAMS, EXCEPINFO,
 };
-use windows::Win32::System::Ole::{DISPID_PROPERTYPUT, EXCEPINFO};
+
+const LOCALE_USER_DEFAULT: u32 = 0x0400;
 
 /// A wrapper around IDispatch to make dynamic calls easier.
 pub struct ComDispatch(pub IDispatch);
@@ -29,7 +29,7 @@ impl ComDispatch {
                     &windows::core::GUID::zeroed(),
                     &name_pcwstr,
                     1,
-                    windows::Win32::System::Com::LOCALE_USER_DEFAULT,
+                    LOCALE_USER_DEFAULT,
                     &mut dispid,
                 )
                 .map_err(|e| {
@@ -51,7 +51,7 @@ impl ComDispatch {
                 .Invoke(
                     dispid,
                     &windows::core::GUID::zeroed(),
-                    windows::Win32::System::Com::LOCALE_USER_DEFAULT,
+                    LOCALE_USER_DEFAULT,
                     DISPATCH_FLAGS(flags as u16),
                     &params,
                     Some(&mut result),

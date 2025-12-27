@@ -18,7 +18,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 thiserror = "1.0"
-windows = { version = "0.56", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_Security_Credentials"] }
+windows = { version = "0.56", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_Security_Credentials", "Win32_Globalization"] }
 tauri = { version = "2.0.0-rc", features = [] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.8", features = ["v4", "serde"] }
