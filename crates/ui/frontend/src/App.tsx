@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Mail, Search, BarChart3, Settings, Share2, LayoutDashboard } from 'lucide-react'
+import { Mail, Search, Settings, Share2, LayoutDashboard } from 'lucide-react'
 import { SentimentChart } from './components/SentimentChart'
 import { EntityGraph } from './components/EntityGraph'
 import { clsx, type ClassValue } from 'clsx'
