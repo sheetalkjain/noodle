@@ -4,12 +4,12 @@ use ai::provider::{AiProvider, ChatRequest, Message};
 use chrono::Utc;
 use noodle_core::error::Result;
 use noodle_core::types::{
-    ActionItem, Email, EmailFact, EmailType, ProjectInfo, Provenance, Sentiment, Urgency,
+    Email, EmailFact, EmailType, ProjectInfo, Provenance, Sentiment, Urgency,
 };
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
 pub struct ExtractionPipeline {
@@ -31,7 +31,7 @@ impl ExtractionPipeline {
         info!("Processing email: {}", email.subject);
 
         // 1. Extract facts using AI
-        let facts = self.extract_facts(&email).await?;
+        let _facts = self.extract_facts(&email).await?;
 
         // 2. Generate embeddings
         let embedding = self.ai.generate_embedding(&email.body_text).await?;

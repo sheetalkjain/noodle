@@ -1,5 +1,5 @@
 use ai::provider::{AiProvider, ChatRequest, Message};
-use noodle_core::error::{NoodleError, Result};
+use noodle_core::error::Result;
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
