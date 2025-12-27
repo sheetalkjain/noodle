@@ -3,7 +3,7 @@ use qdrant_client::qdrant::{
     vectors_config::Config, CreateCollection, DeletePoints, Distance, Filter, PointStruct,
     ScoredPoint, SearchPoints, UpsertPoints, VectorParams, VectorsConfig,
 };
-use qdrant_client::Qdrant;
+use qdrant_client::{Payload, Qdrant};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tracing::info;
@@ -42,7 +42,7 @@ impl QdrantStorage {
         if !self.client.collection_exists(name).await.unwrap_or(false) {
             info!("Creating collection: {}", name);
             self.client
-                .create_collection(&CreateCollection {
+                .create_collection(CreateCollection {
                     collection_name: name.into(),
                     vectors_config: Some(VectorsConfig {
                         config: Some(Config::Params(VectorParams {
@@ -97,7 +97,7 @@ impl QdrantStorage {
     ) -> Result<Vec<ScoredPoint>> {
         let result = self
             .client
-            .search_points(&SearchPoints {
+            .search_points(SearchPoints {
                 collection_name: COLLECTION_EMAILS.into(),
                 vector: vector.into(),
                 filter,
