@@ -1,0 +1,53 @@
+name: Build Windows App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: install frontend dependencies
+        run: |
+          cd crates/ui/frontend
+          npm install
+
+      - name: build frontend
+        run: |
+          cd crates/ui/frontend
+          npm run build
+
+      - name: build tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/ui
+          tagName: v__VERSION__
+          releaseName: "Noodle v__VERSION__"
+          releaseBody: "See the assets below to download the version for Windows."
+          releaseDraft: true
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            crates/ui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            crates/ui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            crates/ui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msix/*.msix
