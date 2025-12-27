@@ -1,6 +1,6 @@
 use noodle_core::error::{NoodleError, Result};
 use std::ptr;
-use windows::core::{BSTR, HRESULT, VARIANT};
+use windows::core::{BSTR, HRESULT, PCWSTR, VARIANT};
 use windows::Win32::System::Com::{
     IDispatch, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET, DISPPARAMS,
 };
@@ -23,10 +23,11 @@ impl ComDispatch {
         let name_bstr = BSTR::from(name);
 
         unsafe {
+            let name_pcwstr = PCWSTR(name_bstr.as_ptr());
             self.0
                 .GetIDsOfNames(
                     &windows::core::GUID::zeroed(),
-                    &name_bstr,
+                    &name_pcwstr,
                     1,
                     windows::Win32::System::Com::LOCALE_USER_DEFAULT,
                     &mut dispid,

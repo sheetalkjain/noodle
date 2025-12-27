@@ -24,7 +24,7 @@ impl OutlookClient {
             let app_dispatch = ComDispatch(app);
             let namespace_var =
                 app_dispatch.call_method("GetNamespace", &mut [VARIANT::from("MAPI")])?;
-            let namespace: IDispatch = namespace_var.to_interface().map_err(|e| {
+            let namespace: IDispatch = IDispatch::try_from(&namespace_var).map_err(|e| {
                 NoodleError::Outlook(format!("Failed to get Namespace dispatch: {}", e))
             })?;
 
@@ -39,15 +39,13 @@ impl OutlookClient {
             .namespace
             .call_method("GetDefaultFolder", &mut [VARIANT::from(6i32)])?; // 6 = olFolderInbox
         let inbox = ComDispatch(
-            folder_var
-                .to_interface()
+            IDispatch::try_from(&folder_var)
                 .map_err(|e| NoodleError::Outlook(format!("Failed to get Inbox: {}", e)))?,
         );
 
         let items_var = inbox.get_property("Items")?;
         let items = ComDispatch(
-            items_var
-                .to_interface()
+            IDispatch::try_from(&items_var)
                 .map_err(|e| NoodleError::Outlook(format!("Failed to get Items: {}", e)))?,
         );
 
@@ -60,8 +58,7 @@ impl OutlookClient {
         let filtered_items_var =
             items.call_method("Restrict", &mut [VARIANT::from(filter.as_str())])?;
         let filtered_items = ComDispatch(
-            filtered_items_var
-                .to_interface()
+            IDispatch::try_from(&filtered_items_var)
                 .map_err(|e| NoodleError::Outlook(format!("Failed to restrict items: {}", e)))?,
         );
 
@@ -70,14 +67,12 @@ impl OutlookClient {
 
     fn parse_items(&self, items: ComDispatch) -> Result<Vec<Email>> {
         let count_var = items.get_property("Count")?;
-        let count = count_var.as_i32().unwrap_or(0);
+        let count = i32::try_from(&count_var).unwrap_or(0);
         let mut emails = Vec::new();
 
         for i in 1..=count {
             let item_var = items.call_method("Item", &mut [VARIANT::from(i)])?;
-            let item_dispatch: Result<IDispatch> = item_var.to_interface().map_err(|e| {
-                NoodleError::Outlook(format!("Failed to get IDispatch from VARIANT: {}", e))
-            });
+            let item_dispatch = IDispatch::try_from(&item_var);
             if let Ok(dispatch) = item_dispatch {
                 let item = ComDispatch(dispatch);
                 if let Ok(email) = self.map_item_to_email(&item) {
