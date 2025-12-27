@@ -1,0 +1,19 @@
+# Rust
+/target
+Cargo.lock
+
+# Node.js
+**/node_modules
+**/dist
+**/dist-tauri
+.env
+
+# Windows/Desktop
+*.log
+Thumbs.db
+.DS_Store
+
+# Tauri
+src-tauri/target
+src-tauri/gen/apple
+src-tauri/gen/android

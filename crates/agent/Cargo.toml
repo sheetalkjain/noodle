@@ -1,0 +1,16 @@
+[package]
+name = "agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core = { path = "../core" }
+storage = { path = "../storage" }
+outlook = { path = "../outlook" }
+ai = { path = "../ai" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+cron = { workspace = true }
+chrono = { workspace = true }

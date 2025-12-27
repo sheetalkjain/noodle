@@ -1,0 +1,15 @@
+[package]
+name = "outlook"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core = { path = "../core" }
+storage = { path = "../storage" }
+serde = { workspace = true }
+windows = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
