@@ -6,7 +6,7 @@ members = [
     "crates/outlook",
     "crates/ai",
     "crates/agent",
-    "crates/ui",
+    "crates/ui/src-tauri",
 ]
 
 [workspace.dependencies]

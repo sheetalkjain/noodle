@@ -30,7 +30,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: crates/ui
+          projectPath: crates/ui/src-tauri
           tagName: v__VERSION__
           releaseName: "Noodle v__VERSION__"
           releaseBody: "See the assets below to download the version for Windows."
@@ -43,5 +43,5 @@ jobs:
         with:
           name: windows-artifacts
           path: |
-            crates/ui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            crates/ui/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
