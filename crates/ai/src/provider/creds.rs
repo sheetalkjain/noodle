@@ -1,4 +1,4 @@
-use core::error::{NoodleError, Result};
+use noodle_core::error::{NoodleError, Result};
 use std::ptr;
 use windows::core::{BSTR, PWSTR};
 use windows::Win32::Security::Credentials::{

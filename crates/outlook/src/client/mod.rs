@@ -1,7 +1,7 @@
 use crate::com::ComDispatch;
 use chrono::{DateTime, Duration, Utc};
-use core::error::{NoodleError, Result};
-use core::types::Email;
+use noodle_core::error::{NoodleError, Result};
+use noodle_core::types::Email;
 use tracing::{info, warn};
 use windows::core::VARIANT;
 use windows::Win32::System::Com::IDispatch;
@@ -24,9 +24,9 @@ impl OutlookClient {
             let app_dispatch = ComDispatch(app);
             let namespace_var =
                 app_dispatch.call_method("GetNamespace", &mut [VARIANT::from("MAPI")])?;
-            let namespace: IDispatch = namespace_var
-                .try_into()
-                .map_err(|_| NoodleError::Outlook("Failed to get Namespace dispatch".into()))?;
+            let namespace: IDispatch = namespace_var.to_interface().map_err(|e| {
+                NoodleError::Outlook(format!("Failed to get Namespace dispatch: {}", e))
+            })?;
 
             Ok(Self {
                 namespace: ComDispatch(namespace),
@@ -40,15 +40,15 @@ impl OutlookClient {
             .call_method("GetDefaultFolder", &mut [VARIANT::from(6i32)])?; // 6 = olFolderInbox
         let inbox = ComDispatch(
             folder_var
-                .try_into()
-                .map_err(|_| NoodleError::Outlook("Failed to get Inbox".into()))?,
+                .to_interface()
+                .map_err(|e| NoodleError::Outlook(format!("Failed to get Inbox: {}", e)))?,
         );
 
         let items_var = inbox.get_property("Items")?;
         let items = ComDispatch(
             items_var
-                .try_into()
-                .map_err(|_| NoodleError::Outlook("Failed to get Items".into()))?,
+                .to_interface()
+                .map_err(|e| NoodleError::Outlook(format!("Failed to get Items: {}", e)))?,
         );
 
         // Filter items
@@ -61,8 +61,8 @@ impl OutlookClient {
             items.call_method("Restrict", &mut [VARIANT::from(filter.as_str())])?;
         let filtered_items = ComDispatch(
             filtered_items_var
-                .try_into()
-                .map_err(|_| NoodleError::Outlook("Failed to restrict items".into()))?,
+                .to_interface()
+                .map_err(|e| NoodleError::Outlook(format!("Failed to restrict items: {}", e)))?,
         );
 
         self.parse_items(filtered_items)
@@ -75,7 +75,9 @@ impl OutlookClient {
 
         for i in 1..=count {
             let item_var = items.call_method("Item", &mut [VARIANT::from(i)])?;
-            let item_dispatch: Result<IDispatch> = item_var.try_into();
+            let item_dispatch: Result<IDispatch> = item_var.to_interface().map_err(|e| {
+                NoodleError::Outlook(format!("Failed to get IDispatch from VARIANT: {}", e))
+            });
             if let Ok(dispatch) = item_dispatch {
                 let item = ComDispatch(dispatch);
                 if let Ok(email) = self.map_item_to_email(&item) {
@@ -87,7 +89,7 @@ impl OutlookClient {
         Ok(emails)
     }
 
-    fn map_item_to_email(&self, item: &ComDispatch) -> Result<Email> {
+    fn map_item_to_email(&self, _item: &ComDispatch) -> Result<Email> {
         // This would extract all fields from the MailItem
         // EntryID, Subject, Body, SenderEmailAddress, etc.
         // For the sake of the implementation, return a skeleton

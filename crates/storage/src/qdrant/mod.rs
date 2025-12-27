@@ -1,4 +1,4 @@
-use core::error::Result;
+use noodle_core::error::Result;
 use qdrant_client::qdrant::{
     vectors_config::Config, CreateCollection, DeletePoints, Distance, Filter, PointStruct,
     ScoredPoint, SearchPoints, UpsertPoints, VectorParams, VectorsConfig,
@@ -21,7 +21,7 @@ impl QdrantStorage {
     pub async fn new(url: &str) -> Result<Self> {
         let client = Qdrant::from_url(url)
             .build()
-            .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
         let storage = Self {
             client: Arc::new(client),
@@ -54,7 +54,7 @@ impl QdrantStorage {
                     ..Default::default()
                 })
                 .await
-                .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+                .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
         }
         Ok(())
     }
@@ -75,7 +75,7 @@ impl QdrantStorage {
                 ..Default::default()
             })
             .await
-            .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
         Ok(())
     }
 
@@ -106,7 +106,7 @@ impl QdrantStorage {
                 ..Default::default()
             })
             .await
-            .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
         Ok(result.result)
     }
@@ -119,7 +119,7 @@ impl QdrantStorage {
                 ..Default::default()
             })
             .await
-            .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
         Ok(())
     }
 }

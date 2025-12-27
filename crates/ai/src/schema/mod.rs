@@ -1,10 +1,9 @@
-use core::error::{NoodleError, Result};
-use core::types::EmailFact;
+use crate::provider::{AiProvider, ChatRequest, Message, ResponseFormat};
 use jsonschema::JSONSchema;
+use noodle_core::error::{NoodleError, Result};
 use serde_json::Value;
-use ai::provider::{AiProvider, ChatRequest, Message, ResponseFormat};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::warn;
 
 pub struct ExtractionValidator {
     schema: JSONSchema,
@@ -22,7 +21,7 @@ impl ExtractionValidator {
             },
             "required": ["email_type", "summary", "confidence", "needs_response"]
         });
-        
+
         let schema = JSONSchema::compile(&schema_json).expect("Invalid internal schema");
         Self { schema }
     }
@@ -47,28 +46,40 @@ impl ExtractionPipeline {
 
     pub async fn extract_with_repair(&self, text: &str) -> Result<Value> {
         let mut response = self.run_extraction(text, None).await?;
-        
+
         if !self.validator.validate(&response) {
             warn!("First AI response failed validation. Attempting repair pass...");
             response = self.run_repair(text, &response).await?;
         }
-        
+
         if !self.validator.validate(&response) {
-            return Err(NoodleError::AI("Self-repair failed to produce valid JSON".into()));
+            return Err(NoodleError::AI(
+                "Self-repair failed to produce valid JSON".into(),
+            ));
         }
-        
+
         Ok(response)
     }
 
-    async fn run_extraction(&self, text: &str, system_prompt_override: Option<String>) -> Result<Value> {
+    async fn run_extraction(
+        &self,
+        text: &str,
+        system_prompt_override: Option<String>,
+    ) -> Result<Value> {
         let system_prompt = system_prompt_override.unwrap_or_else(|| {
             "You are an expert email analyst. Output valid JSON only.".to_string()
         });
 
         let request = ChatRequest {
             messages: vec![
-                Message { role: "system".into(), content: system_prompt },
-                Message { role: "user".into(), content: text.to_string() },
+                Message {
+                    role: "system".into(),
+                    content: system_prompt,
+                },
+                Message {
+                    role: "user".into(),
+                    content: text.to_string(),
+                },
             ],
             temperature: 0.0,
             response_format: Some(ResponseFormat::Json),
@@ -83,7 +94,11 @@ impl ExtractionPipeline {
             "The previous JSON output was invalid according to the schema. Fix it.\n\nText: {}\n\nInvalid JSON: {}",
             text, invalid_json
         );
-        
-        self.run_extraction(&repair_prompt, Some("You are a JSON repair specialist. Output corrected JSON only.".into())).await
+
+        self.run_extraction(
+            &repair_prompt,
+            Some("You are a JSON repair specialist. Output corrected JSON only.".into()),
+        )
+        .await
     }
 }

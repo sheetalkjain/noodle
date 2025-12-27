@@ -1,7 +1,7 @@
 pub mod draft;
 
-use core::error::Result;
-use core::types::{Email, EmailFact, ActionItem, ProjectInfo, Sentiment, Urgency, EmailType, Provenance};
+use noodle_core::error::Result;
+use noodle_core::types::{Email, EmailFact, ActionItem, ProjectInfo, Sentiment, Urgency, EmailType, Provenance};
 use storage::sqlite::SqliteStorage;
 use storage::qdrant::QdrantStorage;
 use ai::provider::{AiProvider, ChatRequest, Message};
@@ -58,7 +58,7 @@ impl ExtractionPipeline {
         
         let response = self.ai.chat_completion(request).await?;
         let fact_data: serde_json::Value = serde_json::from_str(&response.content)
-            .map_err(|e| core::error::NoodleError::AI(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
             
         // Map fact_data to EmailFact struct (omitted for brevity in initial slice)
         Ok(EmailFact {

@@ -1,4 +1,4 @@
-use core::error::{NoodleError, Result};
+use noodle_core::error::{NoodleError, Result};
 use std::ptr;
 use windows::core::{BSTR, HRESULT, VARIANT};
 use windows::Win32::System::Com::{
@@ -11,18 +11,18 @@ pub struct ComDispatch(pub IDispatch);
 
 impl ComDispatch {
     pub fn get_property(&self, name: &str) -> Result<VARIANT> {
-        self.invoke(name, DISPATCH_PROPERTYGET, &mut [])
+        self.invoke(name, DISPATCH_PROPERTYGET.0 as u32, &mut [])
     }
 
     pub fn call_method(&self, name: &str, args: &mut [VARIANT]) -> Result<VARIANT> {
-        self.invoke(name, DISPATCH_METHOD, args)
+        self.invoke(name, DISPATCH_METHOD.0 as u32, args)
     }
 
     fn invoke(&self, name: &str, flags: u32, args: &mut [VARIANT]) -> Result<VARIANT> {
-        unsafe {
-            let mut dispid = 0;
-            let name_bstr = BSTR::from(name);
+        let mut dispid = 0;
+        let name_bstr = BSTR::from(name);
 
+        unsafe {
             self.0
                 .GetIDsOfNames(
                     &windows::core::GUID::zeroed(),
@@ -51,7 +51,7 @@ impl ComDispatch {
                     dispid,
                     &windows::core::GUID::zeroed(),
                     windows::Win32::System::Com::LOCALE_USER_DEFAULT,
-                    DISPATCH_FLAGS(flags),
+                    DISPATCH_FLAGS(flags as u16),
                     &params,
                     Some(&mut result),
                     Some(&mut excep_info),

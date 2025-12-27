@@ -1,6 +1,6 @@
 pub mod creds;
 
-use core::error::Result;
+use noodle_core::error::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -74,17 +74,17 @@ impl AiProvider for LocalProvider {
             .json(&request)
             .send()
             .await
-            .map_err(|e| core::error::NoodleError::AI(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
             
         let body: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| core::error::NoodleError::AI(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
             
         // Extract content and usage from OpenAI response format
         let content = body["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| core::error::NoodleError::AI("Invalid AI response format".into()))?
+            .ok_or_else(|| noodle_core::error::NoodleError::AI("Invalid AI response format".into()))?
             .to_string();
             
         let usage = Usage {
@@ -110,15 +110,15 @@ impl AiProvider for LocalProvider {
             }))
             .send()
             .await
-            .map_err(|e| core::error::NoodleError::AI(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
             
         let body: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| core::error::NoodleError::AI(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
             
         let embedding: Vec<f32> = serde_json::from_value(body["data"][0]["embedding"].clone())
-            .map_err(|e| core::error::NoodleError::AI(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
             
         Ok(embedding)
     }

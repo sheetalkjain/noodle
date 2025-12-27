@@ -1,7 +1,7 @@
 use crate::pipeline::ExtractionPipeline;
 use outlook::client::OutlookClient;
 use storage::sqlite::SqliteStorage;
-use core::error::Result;
+use noodle_core::error::Result;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{info, error};

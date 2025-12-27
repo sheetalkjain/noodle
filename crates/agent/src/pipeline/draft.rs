@@ -1,4 +1,4 @@
-use core::error::{NoodleError, Result};
+use noodle_core::error::{NoodleError, Result};
 use storage::sqlite::SqliteStorage;
 use storage::qdrant::QdrantStorage;
 use ai::provider::{AiProvider, ChatRequest, Message};

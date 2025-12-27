@@ -1,4 +1,4 @@
-use core::error::Result;
+use noodle_core::error::Result;
 use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use std::path::Path;
 use tracing::info;
@@ -10,7 +10,7 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path_str = path.as_ref().to_str().ok_or_else(|| {
-            core::error::NoodleError::Storage("Invalid database path".to_string())
+            noodle_core::error::NoodleError::Storage("Invalid database path".to_string())
         })?;
         
         let connection_str = format!("sqlite://{}", path_str);
@@ -19,7 +19,7 @@ impl SqliteStorage {
             .max_connections(5)
             .connect(&connection_str)
             .await
-            .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
             
         info!("Connected to SQLite at {}", path_str);
         
@@ -33,7 +33,7 @@ impl SqliteStorage {
         sqlx::migrate!("./migrations")
             .run(&self.pool)
             .await
-            .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
             
         info!("SQLite migrations completed");
         Ok(())
