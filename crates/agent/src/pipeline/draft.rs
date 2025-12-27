@@ -1,8 +1,8 @@
-use noodle_core::error::{NoodleError, Result};
-use storage::sqlite::SqliteStorage;
-use storage::qdrant::QdrantStorage;
 use ai::provider::{AiProvider, ChatRequest, Message};
+use noodle_core::error::{NoodleError, Result};
 use std::sync::Arc;
+use storage::qdrant::QdrantStorage;
+use storage::sqlite::SqliteStorage;
 
 pub struct DraftAssistant {
     sqlite: Arc<SqliteStorage>,
@@ -11,15 +11,19 @@ pub struct DraftAssistant {
 }
 
 impl DraftAssistant {
-    pub fn new(sqlite: Arc<SqliteStorage>, qdrant: Arc<QdrantStorage>, ai: Arc<dyn AiProvider>) -> Self {
+    pub fn new(
+        sqlite: Arc<SqliteStorage>,
+        qdrant: Arc<QdrantStorage>,
+        ai: Arc<dyn AiProvider>,
+    ) -> Self {
         Self { sqlite, qdrant, ai }
     }
 
-    pub async fn generate_draft(&self, email_id: i64) -> Result<String> {
+    pub async fn generate_draft(&self, _email_id: i64) -> Result<String> {
         // 1. Fetch email and facts from SQLite
         // let email = self.sqlite.get_email(email_id).await?;
         // let facts = self.sqlite.get_facts(email_id).await?;
-        
+
         // 2. Fetch similar emails from Qdrant
         // let embedding = self.ai.generate_embedding(&email.body_text).await?;
         // let similar = self.qdrant.search_emails(embedding, None, 3).await?;
@@ -36,7 +40,10 @@ impl DraftAssistant {
         );
 
         let request = ChatRequest {
-            messages: vec![Message { role: "user".into(), content: prompt }],
+            messages: vec![Message {
+                role: "user".into(),
+                content: prompt,
+            }],
             temperature: 0.7,
             response_format: None,
         };
