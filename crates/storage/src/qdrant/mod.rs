@@ -1,13 +1,12 @@
 use core::error::Result;
 use qdrant_client::prelude::*;
 use qdrant_client::qdrant::{
-    vectors_config::Config, CreateCollection, Distance, VectorParams, Scalars,
+    vectors_config::Config, CreateCollection, Distance, Filter, ScoredPoint, SearchPoints,
+    VectorParams, VectorsConfig,
 };
+use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use tracing::{info, warn};
-use std::sync::Arc;
-
-use sha2::{Sha256, Digest};
-use std::sync::Arc;
 
 pub const COLLECTION_EMAILS: &str = "emails";
 pub const COLLECTION_ATTACHMENTS: &str = "attachments";
@@ -23,13 +22,13 @@ impl QdrantStorage {
         let client = QdrantClient::from_url(url)
             .build()
             .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
-            
+
         let storage = Self {
             client: Arc::new(client),
         };
-        
+
         storage.ensure_collections().await?;
-        
+
         Ok(storage)
     }
 
@@ -60,7 +59,13 @@ impl QdrantStorage {
         Ok(())
     }
 
-    pub async fn upsert_email_vector(&self, store_id: &str, entry_id: &str, vector: Vec<f32>, payload: Payload) -> Result<()> {
+    pub async fn upsert_email_vector(
+        &self,
+        store_id: &str,
+        entry_id: &str,
+        vector: Vec<f32>,
+        payload: Payload,
+    ) -> Result<()> {
         let stable_id = self.calculate_stable_id(store_id, entry_id);
         let point = PointStruct::new(stable_id, vector, payload);
         self.client
@@ -80,8 +85,14 @@ impl QdrantStorage {
         u64::from_le_bytes(bytes)
     }
 
-    pub async fn search_emails(&self, vector: Vec<f32>, filter: Option<Filter>, limit: u64) -> Result<Vec<ScoredPoint>> {
-        let result = self.client
+    pub async fn search_emails(
+        &self,
+        vector: Vec<f32>,
+        filter: Option<Filter>,
+        limit: u64,
+    ) -> Result<Vec<ScoredPoint>> {
+        let result = self
+            .client
             .search_points(&SearchPoints {
                 collection_name: COLLECTION_EMAILS.into(),
                 vector: vector.into(),
@@ -92,7 +103,7 @@ impl QdrantStorage {
             })
             .await
             .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
-            
+
         Ok(result.result)
     }
 
