@@ -2,11 +2,7 @@ use core::error::{NoodleError, Result};
 use std::ptr;
 use windows::core::{BSTR, HRESULT, VARIANT};
 use windows::Win32::System::Com::{
-    IDispatch,
-    IDispatch_Invoke, // Wait, IDispatch_Invoke is usually called via dispatch.Invoke
-    DISPATCH_METHOD,
-    DISPATCH_PROPERTYGET,
-    DISPPARAMS,
+    IDispatch, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET, DISPPARAMS,
 };
 use windows::Win32::System::Ole::{DISPID_PROPERTYPUT, EXCEPINFO};
 
@@ -55,7 +51,7 @@ impl ComDispatch {
                     dispid,
                     &windows::core::GUID::zeroed(),
                     windows::Win32::System::Com::LOCALE_USER_DEFAULT,
-                    flags.try_into().unwrap(),
+                    DISPATCH_FLAGS(flags),
                     &params,
                     Some(&mut result),
                     Some(&mut excep_info),

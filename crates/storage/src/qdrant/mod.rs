@@ -1,12 +1,12 @@
 use core::error::Result;
-use qdrant_client::prelude::*;
 use qdrant_client::qdrant::{
-    vectors_config::Config, CreateCollection, Distance, Filter, ScoredPoint, SearchPoints,
-    VectorParams, VectorsConfig,
+    vectors_config::Config, CreateCollection, DeletePoints, Distance, Filter, PointStruct,
+    ScoredPoint, SearchPoints, UpsertPoints, VectorParams, VectorsConfig,
 };
+use qdrant_client::Qdrant;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 
 pub const COLLECTION_EMAILS: &str = "emails";
 pub const COLLECTION_ATTACHMENTS: &str = "attachments";
@@ -14,12 +14,12 @@ pub const VECTOR_NAME: &str = "body_embedding";
 pub const DEFAULT_DIM: u64 = 1536;
 
 pub struct QdrantStorage {
-    client: Arc<QdrantClient>,
+    client: Arc<Qdrant>,
 }
 
 impl QdrantStorage {
     pub async fn new(url: &str) -> Result<Self> {
-        let client = QdrantClient::from_url(url)
+        let client = Qdrant::from_url(url)
             .build()
             .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
 
@@ -39,7 +39,7 @@ impl QdrantStorage {
     }
 
     async fn ensure_collection(&self, name: &str, dim: u64) -> Result<()> {
-        if !self.client.has_collection(name).await.unwrap_or(false) {
+        if !self.client.collection_exists(name).await.unwrap_or(false) {
             info!("Creating collection: {}", name);
             self.client
                 .create_collection(&CreateCollection {
@@ -69,7 +69,11 @@ impl QdrantStorage {
         let stable_id = self.calculate_stable_id(store_id, entry_id);
         let point = PointStruct::new(stable_id, vector, payload);
         self.client
-            .upsert_points(COLLECTION_EMAILS, None, vec![point], None)
+            .upsert_points(UpsertPoints {
+                collection_name: COLLECTION_EMAILS.into(),
+                points: vec![point],
+                ..Default::default()
+            })
             .await
             .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
         Ok(())
@@ -109,7 +113,11 @@ impl QdrantStorage {
 
     pub async fn delete_points(&self, collection: &str, filter: Filter) -> Result<()> {
         self.client
-            .delete_points(collection, None, &filter.into(), None)
+            .delete_points(DeletePoints {
+                collection_name: collection.into(),
+                points: Some(filter.into()),
+                ..Default::default()
+            })
             .await
             .map_err(|e| core::error::NoodleError::Storage(e.to_string()))?;
         Ok(())
