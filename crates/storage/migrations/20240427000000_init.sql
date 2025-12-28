@@ -127,7 +127,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5(
     entities,
     project,
     content='emails',
-    content_id='id'
+    content_rowid='id'
 );
 
 -- Triggers to keep FTS in sync
