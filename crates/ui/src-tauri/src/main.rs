@@ -5,7 +5,7 @@ use outlook::client::OutlookClient;
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
-use tauri::{command, Manager, State};
+use tauri::{command, Emitter, Manager, State};
 use tracing::{error, info};
 
 struct AppState {
@@ -14,6 +14,7 @@ struct AppState {
     ai: Arc<dyn AiProvider>,
     pipeline: Arc<ExtractionPipeline>,
     outlook: Arc<OutlookClient>,
+    app_handle: tauri::AppHandle,
 }
 
 #[command]
@@ -70,10 +71,21 @@ async fn get_stats(state: State<'_, AppState>) -> Result<serde_json::Value, Stri
 
 #[command]
 async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
+    info!("Manual sync requested");
+    let app_handle = state.app_handle.clone();
+    let _ = app_handle.emit(
+        "noodle://log",
+        serde_json::json!({
+            "message": "Manual sync started",
+            "level": "info"
+        }),
+    );
+
     let sync_manager = Arc::new(SyncManager::new(
         state.pipeline.clone(),
         state.outlook.clone(),
         state.sqlite.clone(),
+        state.app_handle.clone(),
     ));
 
     tokio::spawn(async move {
@@ -234,6 +246,7 @@ fn main() {
                     ai,
                     pipeline,
                     outlook,
+                    app_handle: app_handle.clone(),
                 });
             });
 

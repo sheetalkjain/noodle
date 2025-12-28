@@ -33,41 +33,69 @@ impl OutlookClient {
         }
     }
 
-    pub fn get_emails_last_n_days(&self, days: i64) -> Result<Vec<Email>> {
-        let folder_var = self
-            .namespace
-            .call_method("GetDefaultFolder", &mut [VARIANT::from(6i32)])?; // 6 = olFolderInbox
-        let inbox = ComDispatch(
-            IDispatch::try_from(&folder_var)
-                .map_err(|e| NoodleError::Outlook(format!("Failed to get Inbox: {}", e)))?,
+    pub fn get_emails_last_n_days(
+        &self,
+        days: i64,
+        folder_id: i32,
+        folder_name: &str,
+    ) -> Result<Vec<Email>> {
+        tracing::info!(
+            "Starting Outlook sync for folder: {} (ID: {})",
+            folder_name,
+            folder_id
         );
 
-        let items_var = inbox.get_property("Items")?;
-        let items = ComDispatch(
-            IDispatch::try_from(&items_var)
-                .map_err(|e| NoodleError::Outlook(format!("Failed to get Items: {}", e)))?,
-        );
+        let folder_var = self
+            .namespace
+            .call_method("GetDefaultFolder", &mut [VARIANT::from(folder_id)])?;
+
+        let folder = ComDispatch(IDispatch::try_from(&folder_var).map_err(|e| {
+            NoodleError::Outlook(format!("Failed to get folder {}: {}", folder_name, e))
+        })?);
+
+        let items_var = folder.get_property("Items")?;
+        let items = ComDispatch(IDispatch::try_from(&items_var).map_err(|e| {
+            NoodleError::Outlook(format!("Failed to get Items for {}: {}", folder_name, e))
+        })?);
 
         // Filter items
         let filter_date = Utc::now() - Duration::days(days);
+        // Using a more standard format for Outlook filters (English month is most robust)
         let filter = format!(
             "[ReceivedTime] >= '{}'",
-            filter_date.format("%m/%d/%Y %H:%M %p")
-        );
-        tracing::debug!("Applying Outlook filter: {}", filter);
-        let filtered_items_var =
-            items.call_method("Restrict", &mut [VARIANT::from(filter.as_str())])?;
-        let filtered_items = ComDispatch(
-            IDispatch::try_from(&filtered_items_var)
-                .map_err(|e| NoodleError::Outlook(format!("Failed to restrict items: {}", e)))?,
+            filter_date.format("%d %b %Y %H:%M %p")
         );
 
-        let emails = self.parse_items(filtered_items)?;
-        tracing::info!("Outlook search returned {} emails", emails.len());
+        tracing::info!("Applying Outlook filter for {}: {}", folder_name, filter);
+
+        // We catch errors here and log them specifically
+        let filtered_items_var =
+            match items.call_method("Restrict", &mut [VARIANT::from(filter.as_str())]) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!("Outlook Restrict method failed for {}: {}", folder_name, e);
+                    return Err(e);
+                }
+            };
+
+        let filtered_items =
+            ComDispatch(IDispatch::try_from(&filtered_items_var).map_err(|e| {
+                NoodleError::Outlook(format!(
+                    "Failed to restrict items in {}: {}",
+                    folder_name, e
+                ))
+            })?);
+
+        let emails = self.parse_items(filtered_items, folder_name)?;
+        tracing::info!(
+            "Outlook search in {} returned {} emails",
+            folder_name,
+            emails.len()
+        );
         Ok(emails)
     }
 
-    fn parse_items(&self, items: ComDispatch) -> Result<Vec<Email>> {
+    fn parse_items(&self, items: ComDispatch, folder_name: &str) -> Result<Vec<Email>> {
         let count_var = items.get_property("Count")?;
         let count = i32::try_from(&count_var).unwrap_or(0);
         let mut emails = Vec::new();
@@ -77,10 +105,15 @@ impl OutlookClient {
             let item_dispatch = IDispatch::try_from(&item_var);
             if let Ok(dispatch) = item_dispatch {
                 let item = ComDispatch(dispatch);
-                if let Ok(email) = self.map_item_to_email(&item) {
+                if let Ok(mut email) = self.map_item_to_email(&item) {
+                    email.folder = folder_name.to_string();
                     emails.push(email);
                 } else {
-                    tracing::warn!("Failed to map Outlook item to Email struct at index {}", i);
+                    tracing::warn!(
+                        "Failed to map Outlook item to Email struct in {} at index {}",
+                        folder_name,
+                        i
+                    );
                 }
             }
         }

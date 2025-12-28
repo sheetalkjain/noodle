@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { Mail, Search, Settings, Share2, LayoutDashboard } from 'lucide-react'
 import { SentimentChart } from './components/SentimentChart'
 import { EntityGraph } from './components/EntityGraph'
@@ -48,19 +49,23 @@ function App() {
         setIsLoading(true)
         try {
             await invoke('start_sync')
-            addLog('Sync started in background')
-            // Refresh stats periodically
-            const interval = setInterval(fetchStats, 5000)
-            return () => clearInterval(interval)
+            addLog('Sync thread spawned successfully')
+            // Refresh stats periodically for 2 minutes or until emails start appearing
+            const intervalId = setInterval(fetchStats, 5000)
+            setTimeout(() => clearInterval(intervalId), 120000)
         } catch (error: any) {
             addLog(`Sync failed: ${error}`, 'error')
-        } finally {
             setIsLoading(false)
         }
     }
 
     useEffect(() => {
         fetchStats()
+
+        const unlistenPromise = listen('noodle://log', (event: any) => {
+            const { message, level } = event.payload
+            addLog(`[BACKEND] ${message}`, level === 'error' ? 'error' : 'info')
+        })
 
         window.onerror = (msg, _url, _lineNo, _columnNo, error) => {
             addLog(`Global Error: ${msg} ${error}`, 'error')
@@ -69,6 +74,10 @@ function App() {
 
         window.onunhandledrejection = (event) => {
             addLog(`Unhandled Promise Rejection: ${event.reason}`, 'error')
+        }
+
+        return () => {
+            unlistenPromise.then(unlisten => unlisten())
         }
     }, [])
 
