@@ -1,6 +1,6 @@
 use noodle_core::error::Result;
 use serde_json;
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
 use std::path::Path;
 use tracing::info;
 
@@ -48,7 +48,7 @@ impl SqliteStorage {
         let importance = email.importance as i64;
         let flags = email.flags.map(|f| f as i64);
 
-        let row = sqlx::query!(
+        let row = sqlx::query(
             r#"
             INSERT INTO emails (
                 store_id, entry_id, conversation_id, folder, subject, sender, "to", cc, bcc, 
@@ -64,31 +64,31 @@ impl SqliteStorage {
                 hash = excluded.hash
             RETURNING id
             "#,
-            email.store_id,
-            email.entry_id,
-            email.conversation_id,
-            email.folder,
-            email.subject,
-            email.sender,
-            email.to,
-            email.cc,
-            email.bcc,
-            email.sent_at,
-            email.received_at,
-            email.body_text,
-            email.body_html,
-            importance,
-            email.categories,
-            flags,
-            email.internet_message_id,
-            email.last_indexed_at,
-            email.hash
         )
+        .bind(&email.store_id)
+        .bind(&email.entry_id)
+        .bind(email.conversation_id.as_ref())
+        .bind(&email.folder)
+        .bind(&email.subject)
+        .bind(&email.sender)
+        .bind(&email.to)
+        .bind(email.cc.as_ref())
+        .bind(email.bcc.as_ref())
+        .bind(email.sent_at)
+        .bind(email.received_at)
+        .bind(&email.body_text)
+        .bind(email.body_html.as_ref())
+        .bind(importance)
+        .bind(email.categories.as_ref())
+        .bind(flags)
+        .bind(email.internet_message_id.as_ref())
+        .bind(email.last_indexed_at)
+        .bind(&email.hash)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
-        Ok(row.id)
+        Ok(row.get("id"))
     }
 
     pub async fn save_facts(&self, facts: &noodle_core::types::EmailFact) -> Result<()> {
@@ -105,7 +105,7 @@ impl SqliteStorage {
         let labels = serde_json::to_string(&facts.suggested_labels).unwrap();
         let provenance = serde_json::to_string(&facts.provenance).unwrap();
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO extracted_email_facts (
                 email_id, email_type, project, sentiment, urgency, summary,
@@ -119,23 +119,23 @@ impl SqliteStorage {
                 summary = excluded.summary,
                 confidence = excluded.confidence
             "#,
-            facts.email_id,
-            email_type,
-            project_json,
-            sentiment,
-            urgency,
-            facts.summary,
-            key_points,
-            action_items,
-            decisions,
-            risks,
-            deadlines,
-            facts.needs_response,
-            labels,
-            facts.confidence,
-            provenance,
-            facts.created_at
         )
+        .bind(facts.email_id)
+        .bind(email_type)
+        .bind(project_json)
+        .bind(sentiment)
+        .bind(urgency)
+        .bind(&facts.summary)
+        .bind(key_points)
+        .bind(action_items)
+        .bind(decisions)
+        .bind(risks)
+        .bind(deadlines)
+        .bind(facts.needs_response)
+        .bind(labels)
+        .bind(facts.confidence)
+        .bind(provenance)
+        .bind(facts.created_at)
         .execute(&self.pool)
         .await
         .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
@@ -144,14 +144,14 @@ impl SqliteStorage {
     }
 
     pub async fn get_dashboard_stats(&self) -> Result<serde_json::Value> {
-        let total_emails = sqlx::query!("SELECT COUNT(*) as count FROM emails")
+        let total_emails = sqlx::query("SELECT COUNT(*) as count FROM emails")
             .fetch_one(&self.pool)
             .await
-            .map(|r| r.count as i64)
+            .map(|r| r.get::<i64, _>("count"))
             .unwrap_or(0);
 
-        let sentiment_data = sqlx::query!(
-            "SELECT sentiment, COUNT(*) as count FROM extracted_email_facts GROUP BY sentiment"
+        let sentiment_data = sqlx::query(
+            "SELECT sentiment, COUNT(*) as count FROM extracted_email_facts GROUP BY sentiment",
         )
         .fetch_all(&self.pool)
         .await
@@ -159,7 +159,7 @@ impl SqliteStorage {
 
         let sentiments = sentiment_data
             .into_iter()
-            .map(|r| serde_json::json!({ "sentiment": r.sentiment, "count": r.count as i64 }))
+            .map(|r| serde_json::json!({ "sentiment": r.get::<String, _>("sentiment"), "count": r.get::<i64, _>("count") }))
             .collect::<Vec<_>>();
 
         Ok(serde_json::json!({
@@ -170,21 +170,21 @@ impl SqliteStorage {
     pub async fn get_emails_by_ids(&self, ids: Vec<i64>) -> Result<Vec<serde_json::Value>> {
         let mut results = Vec::new();
         for id in ids {
-            let email = sqlx::query!(
+            let email = sqlx::query(
                 "SELECT id, subject, sender, received_at, body_text FROM emails WHERE id = ?",
-                id
             )
+            .bind(id)
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
             if let Some(row) = email {
                 results.push(serde_json::json!({
-                    "id": row.id as i64,
-                    "subject": row.subject,
-                    "sender": row.sender,
-                    "received_at": row.received_at,
-                    "body_text": row.body_text
+                    "id": row.get::<i64, _>("id"),
+                    "subject": row.get::<String, _>("subject"),
+                    "sender": row.get::<String, _>("sender"),
+                    "received_at": row.get::<chrono::DateTime<chrono::Utc>, _>("received_at"),
+                    "body_text": row.get::<String, _>("body_text")
                 }));
             }
         }
@@ -192,21 +192,21 @@ impl SqliteStorage {
     }
 
     pub async fn get_entities(&self) -> Result<serde_json::Value> {
-        let nodes = sqlx::query!(
-            "SELECT id, canonical_name as name, entity_type as kind FROM entities LIMIT 100"
+        let nodes_rows = sqlx::query(
+            "SELECT id, canonical_name as name, entity_type as kind FROM entities LIMIT 100",
         )
         .fetch_all(&self.pool)
         .await
         .unwrap_or_else(|_| vec![]);
 
-        let links = sqlx::query!("SELECT src_entity_id as source, dst_entity_id as target, edge_type as kind FROM edges LIMIT 200")
+        let links_rows = sqlx::query("SELECT src_entity_id as source, dst_entity_id as target, edge_type as kind FROM edges LIMIT 200")
             .fetch_all(&self.pool)
             .await
             .unwrap_or_else(|_| vec![]);
 
         Ok(serde_json::json!({
-            "nodes": nodes.into_iter().map(|n| serde_json::json!({ "id": n.id.to_string(), "name": n.name, "type": n.kind })).collect::<Vec<_>>(),
-            "links": links.into_iter().map(|l| serde_json::json!({ "source": l.source.to_string(), "target": l.target.to_string(), "type": l.kind })).collect::<Vec<_>>()
+            "nodes": nodes_rows.into_iter().map(|n| serde_json::json!({ "id": n.get::<i64, _>("id").to_string(), "name": n.get::<String, _>("name"), "type": n.get::<String, _>("kind") })).collect::<Vec<_>>(),
+            "links": links_rows.into_iter().map(|l| serde_json::json!({ "source": l.get::<i64, _>("source").to_string(), "target": l.get::<i64, _>("target").to_string(), "type": l.get::<String, _>("kind") })).collect::<Vec<_>>()
         }))
     }
 }
