@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Mail, Search, Settings, Share2, LayoutDashboard } from 'lucide-react'
 import { SentimentChart } from './components/SentimentChart'
@@ -14,6 +14,9 @@ function App() {
     const [emails, setEmails] = useState<any[]>([])
     const [searchQuery, setSearchQuery] = useState('')
     const [activeTab, setActiveTab] = useState('dashboard')
+    const [stats, setStats] = useState<any>({ total_emails: 0, sentiments: [] })
+    const [graphData, setGraphData] = useState<any>({ nodes: [], links: [] })
+    const [isLoading, setIsLoading] = useState(false)
 
     const mockSentimentData = [
         { sentiment: 'very_positive', count: 12 },
@@ -34,6 +37,36 @@ function App() {
             { source: '1', target: '3', type: 'employee' },
         ]
     }
+
+    const fetchStats = async () => {
+        try {
+            const data = await invoke('get_stats')
+            setStats(data)
+
+            const graph = await invoke('get_graph')
+            setGraphData(graph)
+        } catch (error) {
+            console.error('Failed to fetch data:', error)
+        }
+    }
+
+    const startSync = async () => {
+        setIsLoading(true)
+        try {
+            await invoke('start_sync')
+            // Refresh stats periodically
+            const interval = setInterval(fetchStats, 5000)
+            return () => clearInterval(interval)
+        } catch (error) {
+            console.error('Sync failed:', error)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchStats()
+    }, [])
 
     const handleSearch = async () => {
         try {
@@ -73,6 +106,13 @@ function App() {
             <div className="flex-1 flex flex-col">
                 <header className="h-16 border-b border-zinc-800 flex items-center px-6">
                     <h1 className="text-xl font-bold tracking-tight">Noodle</h1>
+                    <button
+                        onClick={startSync}
+                        disabled={isLoading}
+                        className="ml-6 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 rounded-md text-sm font-medium transition-colors"
+                    >
+                        {isLoading ? 'Syncing...' : 'Sync Outlook'}
+                    </button>
                     <div className="ml-auto w-96 relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <input
@@ -90,16 +130,16 @@ function App() {
                     {activeTab === 'dashboard' && (
                         <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <SentimentChart data={mockSentimentData} />
+                                <SentimentChart data={stats.sentiments.length > 0 ? stats.sentiments : mockSentimentData} />
                                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 flex flex-col justify-center">
                                     <h4 className="text-zinc-400 text-sm mb-1">Total Emails</h4>
-                                    <div className="text-4xl font-bold">1,284</div>
-                                    <div className="text-emerald-500 text-sm mt-2">+12% from last month</div>
+                                    <div className="text-4xl font-bold">{stats.total_emails.toLocaleString()}</div>
+                                    <div className="text-emerald-500 text-sm mt-2">Live sync active</div>
                                 </div>
                             </div>
                             <div className="rounded-2xl border border-zinc-800 p-4 bg-zinc-950">
                                 <h3 className="text-sm font-medium text-zinc-400 mb-4 px-2">Relationship Graph</h3>
-                                <EntityGraph nodes={mockGraphData.nodes} links={mockGraphData.links} />
+                                <EntityGraph nodes={graphData.nodes.length > 0 ? graphData.nodes : mockGraphData.nodes} links={graphData.links.length > 0 ? graphData.links : mockGraphData.links} />
                             </div>
                         </div>
                     )}

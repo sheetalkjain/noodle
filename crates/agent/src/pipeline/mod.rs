@@ -27,19 +27,24 @@ impl ExtractionPipeline {
         Self { sqlite, qdrant, ai }
     }
 
-    pub async fn process_email(&self, email: Email) -> Result<()> {
+    pub async fn process_email(&self, mut email: Email) -> Result<()> {
         info!("Processing email: {}", email.subject);
 
-        // 1. Extract facts using AI
-        let _facts = self.extract_facts(&email).await?;
+        // 1. Persist to SQLite first to get internal ID
+        let id = self.sqlite.save_email(&email).await?;
+        email.id = id;
 
-        // 2. Generate embeddings
+        // 2. Extract facts using AI
+        let mut facts = self.extract_facts(&email).await?;
+        facts.email_id = id;
+
+        // 3. Save facts to SQLite
+        self.sqlite.save_facts(&facts).await?;
+
+        // 4. Generate embeddings
         let embedding = self.ai.generate_embedding(&email.body_text).await?;
 
-        // 3. Persist to SQLite
-        // (Implementation of save_email and save_facts in storage crate)
-
-        // 4. Persist to Qdrant
+        // 5. Persist to Qdrant
         let payload = qdrant_client::Payload::new(); // Add metadata
         self.qdrant
             .upsert_email_vector(&email.store_id, &email.entry_id, embedding, payload)
@@ -51,7 +56,27 @@ impl ExtractionPipeline {
 
     async fn extract_facts(&self, email: &Email) -> Result<EmailFact> {
         let prompt = format!(
-            "Analyze the following email and extract key points, action items, sentiment, and urgency.\n\nSubject: {}\nFrom: {}\nBody: {}",
+            "Analyze the following email and extract key points, action items, sentiment, and urgency.
+Respond ONLY with a JSON object matching this schema:
+{{
+  \"email_type\": \"status_update|scheduling|question|request|approval|invoice|legal|sales|support|personal|other\",
+  \"project\": {{ \"name\": \"string\", \"confidence\": 0.0-1.0 }},
+  \"sentiment\": \"very_negative|negative|neutral|positive|very_positive\",
+  \"urgency\": \"low|medium|high|critical\",
+  \"summary\": \"string\",
+  \"key_points\": [\"string\"],
+  \"action_items\": [\"string\"],
+  \"decisions\": [\"string\"],
+  \"risks\": [\"string\"],
+  \"deadlines\": [\"string\"],
+  \"needs_response\": true|false,
+  \"suggested_labels\": [\"string\"],
+  \"confidence\": 0.0-1.0
+}}
+
+Subject: {}
+From: {}
+Body: {}",
             email.subject, email.sender, email.body_text
         );
 
@@ -68,25 +93,69 @@ impl ExtractionPipeline {
         let fact_data: serde_json::Value = serde_json::from_str(&response.content)
             .map_err(|e: serde_json::Error| noodle_core::error::NoodleError::AI(e.to_string()))?;
 
-        // Map fact_data to EmailFact struct (omitted for brevity in initial slice)
         Ok(EmailFact {
             email_id: email.id,
-            email_type: EmailType::Other,
-            project: ProjectInfo {
+            email_type: serde_json::from_value(fact_data["email_type"].clone())
+                .unwrap_or(EmailType::Other),
+            project: serde_json::from_value(fact_data["project"].clone()).unwrap_or(ProjectInfo {
                 name: "Default".into(),
                 confidence: 1.0,
-            },
-            sentiment: Sentiment::Neutral,
-            urgency: Urgency::Medium,
-            summary: "Summary placeholder".into(),
-            key_points: vec![],
-            action_items: vec![],
-            decisions: vec![],
-            risks: vec![],
-            deadlines: vec![],
-            needs_response: false,
-            suggested_labels: vec![],
-            confidence: 1.0,
+            }),
+            sentiment: serde_json::from_value(fact_data["sentiment"].clone())
+                .unwrap_or(Sentiment::Neutral),
+            urgency: serde_json::from_value(fact_data["urgency"].clone())
+                .unwrap_or(Urgency::Medium),
+            summary: fact_data["summary"].as_str().unwrap_or("").into(),
+            key_points: fact_data["key_points"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            action_items: fact_data["action_items"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            decisions: fact_data["decisions"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            risks: fact_data["risks"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            deadlines: fact_data["deadlines"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            needs_response: fact_data["needs_response"].as_bool().unwrap_or(false),
+            suggested_labels: fact_data["suggested_labels"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            confidence: fact_data["confidence"].as_f64().unwrap_or(0.0) as f32,
             provenance: Provenance {
                 model: "local".into(),
                 provider: "local".into(),
