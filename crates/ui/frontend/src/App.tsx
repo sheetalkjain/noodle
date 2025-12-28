@@ -17,6 +17,15 @@ function App() {
     const [stats, setStats] = useState<any>({ total_emails: 0, sentiments: [] })
     const [graphData, setGraphData] = useState<any>({ nodes: [], links: [] })
     const [isLoading, setIsLoading] = useState(false)
+    const [logs, setLogs] = useState<string[]>([])
+    const [showLogs, setShowLogs] = useState(false)
+
+    const addLog = (message: string, type: 'info' | 'error' = 'info') => {
+        const timestamp = new Date().toLocaleTimeString()
+        const entry = `[${timestamp}] ${type.toUpperCase()}: ${message}`
+        console.log(entry)
+        setLogs(prev => [entry, ...prev].slice(0, 100))
+    }
 
     const mockSentimentData = [
         { sentiment: 'very_positive', count: 12 },
@@ -39,26 +48,31 @@ function App() {
     }
 
     const fetchStats = async () => {
+        addLog('Fetching stats...')
         try {
             const data = await invoke('get_stats')
             setStats(data)
+            addLog('Stats updated successfully')
 
             const graph = await invoke('get_graph')
             setGraphData(graph)
-        } catch (error) {
-            console.error('Failed to fetch data:', error)
+            addLog('Graph data updated')
+        } catch (error: any) {
+            addLog(`Failed to fetch data: ${error}`, 'error')
         }
     }
 
     const startSync = async () => {
+        addLog('Requesting Outlook sync...')
         setIsLoading(true)
         try {
             await invoke('start_sync')
+            addLog('Sync started in background')
             // Refresh stats periodically
             const interval = setInterval(fetchStats, 5000)
             return () => clearInterval(interval)
-        } catch (error) {
-            console.error('Sync failed:', error)
+        } catch (error: any) {
+            addLog(`Sync failed: ${error}`, 'error')
         } finally {
             setIsLoading(false)
         }
@@ -66,19 +80,35 @@ function App() {
 
     useEffect(() => {
         fetchStats()
+
+        window.onerror = (msg, _url, _lineNo, _columnNo, error) => {
+            addLog(`Global Error: ${msg} ${error}`, 'error')
+            return false
+        }
+
+        window.onunhandledrejection = (event) => {
+            addLog(`Unhandled Promise Rejection: ${event.reason}`, 'error')
+        }
     }, [])
 
     const handleSearch = async () => {
+        addLog(`Searching for: ${searchQuery}`)
         try {
             const results = await invoke('search_emails', { query: searchQuery })
             setEmails(results as any[])
-        } catch (error) {
-            console.error('Search failed:', error)
+            addLog(`Search returned ${(results as any[]).length} results`)
+        } catch (error: any) {
+            addLog(`Search failed: ${error}`, 'error')
         }
     }
 
+    const handleTabChange = (tab: string) => {
+        addLog(`Switching tab to: ${tab}`)
+        setActiveTab(tab)
+    }
+
     return (
-        <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-blue-500/30">
+        <div className="flex h-screen bg-zinc-950 text-white font-sans selection:bg-blue-500/30 overflow-hidden">
             {/* Sidebar */}
             <div className="w-16 border-r border-zinc-800 flex flex-col items-center py-6 gap-6 bg-zinc-950/50 backdrop-blur-xl z-20">
                 <div className="mb-2">
@@ -90,7 +120,7 @@ function App() {
                 <div className="w-10 h-[1px] bg-zinc-800 my-2" />
 
                 <button
-                    onClick={() => setActiveTab('dashboard')}
+                    onClick={() => handleTabChange('dashboard')}
                     className={cn(
                         "p-3 rounded-xl transition-all duration-200 group relative",
                         activeTab === 'dashboard' ? "bg-blue-500/10 text-blue-400" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -100,7 +130,7 @@ function App() {
                     {activeTab === 'dashboard' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
                 </button>
                 <button
-                    onClick={() => setActiveTab('emails')}
+                    onClick={() => handleTabChange('emails')}
                     className={cn(
                         "p-3 rounded-xl transition-all duration-200 group relative",
                         activeTab === 'emails' ? "bg-blue-500/10 text-blue-400" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -110,7 +140,7 @@ function App() {
                     {activeTab === 'emails' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
                 </button>
                 <button
-                    onClick={() => setActiveTab('search')}
+                    onClick={() => handleTabChange('search')}
                     className={cn(
                         "p-3 rounded-xl transition-all duration-200 group relative",
                         activeTab === 'search' ? "bg-blue-500/10 text-blue-400" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -120,7 +150,7 @@ function App() {
                     {activeTab === 'search' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
                 </button>
                 <button
-                    onClick={() => setActiveTab('graph')}
+                    onClick={() => handleTabChange('graph')}
                     className={cn(
                         "p-3 rounded-xl transition-all duration-200 group relative",
                         activeTab === 'graph' ? "bg-blue-500/10 text-blue-400" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
@@ -130,7 +160,13 @@ function App() {
                     {activeTab === 'graph' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
                 </button>
 
-                <div className="mt-auto">
+                <div className="mt-auto flex flex-col items-center gap-4">
+                    <button
+                        onClick={() => setShowLogs(!showLogs)}
+                        className={cn("p-3 rounded-xl transition-colors", showLogs ? "text-blue-400 bg-blue-400/10" : "text-zinc-600 hover:bg-zinc-900")}
+                    >
+                        <LayoutDashboard className="w-5 h-5 rotate-180" />
+                    </button>
                     <button className="p-3 rounded-xl text-zinc-600 hover:bg-zinc-900 hover:text-zinc-300 transition-colors">
                         <Settings className="w-5 h-5" />
                     </button>
@@ -138,7 +174,7 @@ function App() {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0 bg-zinc-950">
+            <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 relative">
                 <header className="h-16 border-b border-zinc-800 flex items-center px-6 justify-between bg-zinc-950/80 backdrop-blur-md sticky top-0 z-10 transition-all">
                     <div className="flex items-center gap-4 min-w-[200px]">
                         <h1 className="text-lg font-semibold tracking-tight text-white">
@@ -277,6 +313,30 @@ function App() {
                         </div>
                     )}
                 </main>
+
+                {/* Log Overlay */}
+                {showLogs && (
+                    <div className="absolute bottom-6 right-6 w-96 max-h-[400px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl flex flex-col z-50 animate-in fade-in zoom-in-95 duration-200 origin-bottom-right">
+                        <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">System Logs</h3>
+                            <button onClick={() => setLogs([])} className="text-[10px] text-zinc-600 hover:text-zinc-400 uppercase font-bold">Clear</button>
+                        </div>
+                        <div className="flex-1 overflow-auto p-4 space-y-2 font-mono text-[11px] selection:bg-blue-500/20">
+                            {logs.length === 0 ? (
+                                <div className="text-zinc-700 italic">No logs yet...</div>
+                            ) : (
+                                logs.map((log, i) => (
+                                    <div key={i} className={cn(
+                                        "p-2 rounded border border-zinc-800 bg-zinc-950/50",
+                                        log.includes('ERROR') ? "text-red-400 border-red-500/20" : "text-zinc-400"
+                                    )}>
+                                        {log}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     ) // End App

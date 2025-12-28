@@ -6,7 +6,7 @@ use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
 use tauri::{command, Manager, State};
-use tracing::info;
+use tracing::{error, info};
 
 struct AppState {
     sqlite: Arc<SqliteStorage>,
@@ -112,16 +112,36 @@ fn main() {
             let app_handle = app.handle().clone();
 
             tauri::async_runtime::block_on(async move {
-                let app_dir = app_handle.path().app_data_dir().unwrap();
-                std::fs::create_dir_all(&app_dir).unwrap();
+                let app_dir = match app_handle.path().app_data_dir() {
+                    Ok(path) => path,
+                    Err(e) => {
+                        error!("Failed to get app data dir: {}", e);
+                        return;
+                    }
+                };
+
+                if let Err(e) = std::fs::create_dir_all(&app_dir) {
+                    error!("Failed to create app data dir: {}", e);
+                }
 
                 let db_path = app_dir.join("noodle.db");
-                let sqlite = Arc::new(SqliteStorage::new(db_path).await.unwrap());
+                let sqlite = match SqliteStorage::new(db_path).await {
+                    Ok(s) => Arc::new(s),
+                    Err(e) => {
+                        error!("Failed to initialize SQLite: {}", e);
+                        // We still need to manage state even if broken, or app will crash on invoke
+                        return;
+                    }
+                };
 
-                // Qdrant initialization usually needs a URL or host in v2-rc
-                let qdrant = Arc::new(QdrantStorage::new("http://localhost:6334").await.unwrap());
+                let qdrant = match QdrantStorage::new("http://localhost:6334").await {
+                    Ok(q) => Arc::new(q),
+                    Err(e) => {
+                        error!("Failed to initialize Qdrant: {}", e);
+                        return;
+                    }
+                };
 
-                // Initialize AI with a local endpoint (e.g. LM Studio or Localhost shim)
                 let ai: Arc<dyn AiProvider> =
                     Arc::new(LocalProvider::new("http://localhost:1234/v1".into(), None));
 
@@ -131,7 +151,13 @@ fn main() {
                     ai.clone(),
                 ));
 
-                let outlook = Arc::new(OutlookClient::new().unwrap());
+                let outlook = match OutlookClient::new() {
+                    Ok(o) => Arc::new(o),
+                    Err(e) => {
+                        error!("Failed to initialize Outlook client: {}", e);
+                        return;
+                    }
+                };
 
                 app_handle.manage(AppState {
                     sqlite,
