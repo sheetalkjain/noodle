@@ -1,0 +1,19 @@
+{
+    "identifier": "default",
+    "description": "Default permissions for Noodle",
+    "windows": [
+        "main"
+    ],
+    "permissions": [
+        "core:default",
+        "core:event:allow-listen",
+        "core:event:allow-emit",
+        "core:path:default",
+        "core:window:default",
+        "core:app:default",
+        "core:resources:default",
+        "core:menu:default",
+        "core:tray:default",
+        "ui:main-permissions"
+    ]
+}

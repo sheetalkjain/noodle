@@ -1,0 +1,14 @@
+{
+    "identifier": "main-permissions",
+    "description": "Permissions for Noodle custom commands",
+    "commands": [
+        "search_emails",
+        "get_stats",
+        "get_graph",
+        "start_sync",
+        "get_email",
+        "list_prompts",
+        "save_prompt",
+        "draft_reply"
+    ]
+}
