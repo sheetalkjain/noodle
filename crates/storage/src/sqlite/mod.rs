@@ -14,11 +14,14 @@ impl SqliteStorage {
             noodle_core::error::NoodleError::Storage("Invalid database path".to_string())
         })?;
 
-        let connection_str = format!("sqlite://{}", path_str);
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
-            .connect(&connection_str)
+            .connect_with(options)
             .await
             .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
