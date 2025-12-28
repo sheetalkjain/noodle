@@ -54,6 +54,7 @@ impl OutlookClient {
             "[ReceivedTime] >= '{}'",
             filter_date.format("%m/%d/%Y %H:%M %p")
         );
+        tracing::debug!("Applying Outlook filter: {}", filter);
         let filtered_items_var =
             items.call_method("Restrict", &mut [VARIANT::from(filter.as_str())])?;
         let filtered_items = ComDispatch(
@@ -61,7 +62,9 @@ impl OutlookClient {
                 .map_err(|e| NoodleError::Outlook(format!("Failed to restrict items: {}", e)))?,
         );
 
-        self.parse_items(filtered_items)
+        let emails = self.parse_items(filtered_items)?;
+        tracing::info!("Outlook search returned {} emails", emails.len());
+        Ok(emails)
     }
 
     fn parse_items(&self, items: ComDispatch) -> Result<Vec<Email>> {
@@ -76,6 +79,8 @@ impl OutlookClient {
                 let item = ComDispatch(dispatch);
                 if let Ok(email) = self.map_item_to_email(&item) {
                     emails.push(email);
+                } else {
+                    tracing::warn!("Failed to map Outlook item to Email struct at index {}", i);
                 }
             }
         }

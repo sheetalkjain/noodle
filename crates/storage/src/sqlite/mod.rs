@@ -1,8 +1,18 @@
+use chrono::{DateTime, Utc};
 use noodle_core::error::Result;
 use serde_json;
 use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
 use std::path::Path;
 use tracing::info;
+
+#[derive(sqlx::FromRow)]
+pub struct EmailRow {
+    pub id: i64,
+    pub subject: String,
+    pub sender: String,
+    pub received_at: DateTime<Utc>,
+    pub body_text: String,
+}
 
 pub struct SqliteStorage {
     pool: SqlitePool,

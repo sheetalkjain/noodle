@@ -19,24 +19,54 @@ impl DraftAssistant {
         Self { sqlite, qdrant, ai }
     }
 
-    pub async fn generate_draft(&self, _email_id: i64) -> Result<String> {
-        // 1. Fetch email and facts from SQLite
-        // let email = self.sqlite.get_email(email_id).await?;
-        // let facts = self.sqlite.get_facts(email_id).await?;
+    pub async fn generate_draft(&self, email_id: i64) -> Result<String> {
+        // 1. Fetch email from SQLite
+        let email =
+            sqlx::query_as::<_, storage::sqlite::EmailRow>("SELECT * FROM emails WHERE id = ?")
+                .bind(email_id)
+                .fetch_one(self.sqlite.pool())
+                .await
+                .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
-        // 2. Fetch similar emails from Qdrant
-        // let embedding = self.ai.generate_embedding(&email.body_text).await?;
-        // let similar = self.qdrant.search_emails(embedding, None, 3).await?;
+        // 2. Fetch facts (optional)
+        let facts = sqlx::query("SELECT summary FROM extracted_email_facts WHERE email_id = ?")
+            .bind(email_id)
+            .fetch_optional(self.sqlite.pool())
+            .await
+            .unwrap_or(None);
+        let summary = facts
+            .map(|r| r.get::<String, _>("summary"))
+            .unwrap_or_default();
 
-        // 3. Build grounded prompt
+        // 3. Fetch similar emails from Qdrant for style/context
+        let embedding = self.ai.generate_embedding(&email.body_text).await?;
+        let similar = self.qdrant.search_emails(embedding, None, 3).await?;
+
+        let mut context = String::new();
+        for point in similar {
+            if let Some(payload) = point.payload {
+                if let Some(subject) = payload.get("subject").and_then(|v| v.as_str()) {
+                    context.push_str(&format!("Example Subject: {}\n", subject));
+                }
+            }
+        }
+
+        // 4. Build grounded prompt
         let prompt = format!(
-            "System: You are an AI assistant. Draft a reply to the following email. 
-            Use the provided context and facts. Do not invent facts.
-            Context: [Thread Content]
-            Facts: [Extracted Facts]
-            Similar Examples: [Vector Search Results]
+            "Analyze the following email and draft a professional reply.
             
-            Email to reply to: [Body]"
+            Original Subject: {}
+            Original From: {}
+            Summary of Facts: {}
+            
+            Style context from similar emails:
+            {}
+            
+            Body to reply to:
+            {}
+            
+            Draft a reply that is concise, professional, and addresses all points in the summary.",
+            email.subject, email.sender, summary, context, email.body_text
         );
 
         let request = ChatRequest {

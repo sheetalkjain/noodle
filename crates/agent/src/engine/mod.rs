@@ -1,10 +1,10 @@
 use crate::pipeline::ExtractionPipeline;
-use outlook::client::OutlookClient;
-use storage::sqlite::SqliteStorage;
 use noodle_core::error::Result;
+use outlook::client::OutlookClient;
 use std::sync::Arc;
+use storage::sqlite::SqliteStorage;
 use tokio::time::{interval, Duration};
-use tracing::{info, error};
+use tracing::{error, info};
 
 pub struct SyncManager {
     pipeline: Arc<ExtractionPipeline>,
@@ -27,7 +27,7 @@ impl SyncManager {
 
     pub async fn start_background_sync(self: Arc<Self>) {
         info!("Starting background sync manager");
-        
+
         // 1. Initial Scan (Last 30 days)
         if let Err(e) = self.run_initial_scan().await {
             error!("Initial scan failed: {}", e);
@@ -47,8 +47,13 @@ impl SyncManager {
     async fn run_initial_scan(&self) -> Result<()> {
         info!("Running initial 30-day sync...");
         let emails = self.outlook.get_emails_last_n_days(30)?;
+        info!("Found {} emails in Outlook", emails.len());
         for email in emails {
-            self.pipeline.process_email(email).await?;
+            let subject = email.subject.clone();
+            if let Err(e) = self.pipeline.process_email(email).await {
+                error!("Failed to process email '{}': {}", subject, e);
+                // Continue to next email
+            }
         }
         Ok(())
     }
@@ -57,8 +62,11 @@ impl SyncManager {
         // Scans last 1 day for any missed items
         let emails = self.outlook.get_emails_last_n_days(1)?;
         for email in emails {
+            let subject = email.subject.clone();
             // Pipeline should handle deduplication based on StoreID + EntryID
-            self.pipeline.process_email(email).await?;
+            if let Err(e) = self.pipeline.process_email(email).await {
+                error!("Failed to process email in delta scan '{}': {}", subject, e);
+            }
         }
         Ok(())
     }

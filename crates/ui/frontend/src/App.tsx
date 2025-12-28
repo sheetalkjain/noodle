@@ -27,25 +27,6 @@ function App() {
         setLogs(prev => [entry, ...prev].slice(0, 100))
     }
 
-    const mockSentimentData = [
-        { sentiment: 'very_positive', count: 12 },
-        { sentiment: 'positive', count: 25 },
-        { sentiment: 'neutral', count: 40 },
-        { sentiment: 'negative', count: 8 },
-        { sentiment: 'very_negative', count: 3 },
-    ]
-
-    const mockGraphData = {
-        nodes: [
-            { id: '1', name: 'John Doe', type: 'person' },
-            { id: '2', name: 'Project Noodle', type: 'project' },
-            { id: '3', name: 'Microsoft', type: 'org' },
-        ],
-        links: [
-            { source: '1', target: '2', type: 'member' },
-            { source: '1', target: '3', type: 'employee' },
-        ]
-    }
 
     const fetchStats = async () => {
         addLog('Fetching stats...')
@@ -236,7 +217,7 @@ function App() {
                                         </h3>
                                     </div>
                                     <div className="p-4">
-                                        <SentimentChart data={stats.sentiments.length > 0 ? stats.sentiments : mockSentimentData} />
+                                        <SentimentChart data={stats.sentiments} />
                                     </div>
                                 </div>
                                 <div className="space-y-6">
@@ -279,7 +260,7 @@ function App() {
                                     <span className="text-xs text-zinc-500">Interactive Visualization</span>
                                 </div>
                                 <div className="flex-1 relative">
-                                    <EntityGraph nodes={graphData.nodes.length > 0 ? graphData.nodes : mockGraphData.nodes} links={graphData.links.length > 0 ? graphData.links : mockGraphData.links} />
+                                    <EntityGraph nodes={graphData.nodes} links={graphData.links} />
                                 </div>
                             </div>
                         </div>
