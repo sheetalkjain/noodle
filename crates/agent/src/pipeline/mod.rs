@@ -30,6 +30,14 @@ impl ExtractionPipeline {
     pub async fn process_email(&self, mut email: Email) -> Result<()> {
         info!("Processing email: {}", email.subject);
 
+        // 0. Compute hash
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&email.subject);
+        hasher.update(&email.sender);
+        hasher.update(&email.body_text);
+        email.hash = format!("{:x}", hasher.finalize());
+
         // 1. Persist to SQLite first to get internal ID
         let id = self.sqlite.save_email(&email).await?;
         email.id = id;

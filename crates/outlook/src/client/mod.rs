@@ -83,10 +83,51 @@ impl OutlookClient {
         Ok(emails)
     }
 
-    fn map_item_to_email(&self, _item: &ComDispatch) -> Result<Email> {
-        // This would extract all fields from the MailItem
-        // EntryID, Subject, Body, SenderEmailAddress, etc.
-        // For the sake of the implementation, return a skeleton
-        unimplemented!("MailItem field extraction logic goes here")
+    fn map_item_to_email(&self, item: &ComDispatch) -> Result<Email> {
+        let entry_id = String::try_from(&item.get_property("EntryID")?)
+            .map_err(|_| NoodleError::Outlook("Missing EntryID".into()))?;
+
+        let subject = String::try_from(&item.get_property("Subject")?)
+            .map_err(|_| NoodleError::Outlook("Missing Subject".into()))?;
+
+        let body_text = String::try_from(&item.get_property("Body")?).unwrap_or_default();
+
+        let sender = String::try_from(&item.get_property("SenderEmailAddress")?)
+            .unwrap_or_else(|_| "Unknown".into());
+
+        let received_at_var = item.get_property("ReceivedTime")?;
+        let received_at_double = f64::try_from(&received_at_var).unwrap_or(0.0);
+
+        // Convert DATE (double) to chrono::DateTime<Utc>
+        // OLE Automation DATE is days since Dec 30, 1899
+        let unix_epoch_offset_days = 25569.0;
+        let seconds_in_day = 86400.0;
+        let unix_timestamp = (received_at_double - unix_epoch_offset_days) * seconds_in_day;
+        let received_at =
+            DateTime::from_timestamp(unix_timestamp as i64, 0).unwrap_or_else(|| Utc::now());
+
+        Ok(Email {
+            id: 0, // Assigned by storage
+            store_id: "outlook".into(),
+            entry_id,
+            conversation_id: None, // Could be extracted if needed
+            folder: "Inbox".into(),
+            subject,
+            sender,
+            to: "".into(), // Could be extracted if needed
+            cc: None,
+            bcc: None,
+            sent_at: received_at, // Simplification
+            received_at,
+            body_text,
+            body_html: None,
+            importance: 1, // Normal
+            categories: None,
+            flags: None,
+            internet_message_id: None,
+            last_indexed_at: Utc::now(),
+            hash: "".into(), // Computed by sync manager
+            excluded_reason: None,
+        })
     }
 }
