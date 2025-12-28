@@ -38,7 +38,13 @@ async fn search_emails(
     // 3. Fetch full email data from SQLite using internal IDs
     let ids: Vec<i64> = results
         .into_iter()
-        .filter_map(|r| r.id.try_into().ok())
+        .filter_map(|r| {
+            r.id.and_then(|id| id.point_id_options)
+                .and_then(|id| match id {
+                    qdrant_client::qdrant::point_id::PointIdOptions::Num(num) => Some(num as i64),
+                    _ => None,
+                })
+        })
         .collect();
 
     state
