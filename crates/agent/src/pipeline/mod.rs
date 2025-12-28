@@ -4,7 +4,7 @@ use ai::provider::{AiProvider, ChatRequest, Message};
 use chrono::Utc;
 use noodle_core::error::Result;
 use noodle_core::types::{
-    Email, EmailFact, EmailType, ProjectInfo, Provenance, Sentiment, Urgency,
+    ActionItem, Email, EmailFact, EmailType, ProjectInfo, Provenance, Sentiment, Urgency,
 };
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
@@ -118,7 +118,14 @@ Body: {}",
                 .as_array()
                 .map(|a| {
                     a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .filter_map(|v| {
+                            v.as_str().map(|s| ActionItem {
+                                owner: None,
+                                task: s.to_string(),
+                                due_date: None,
+                                confidence: 1.0,
+                            })
+                        })
                         .collect()
                 })
                 .unwrap_or_default(),
