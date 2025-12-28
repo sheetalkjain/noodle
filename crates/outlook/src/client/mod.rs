@@ -1,8 +1,8 @@
 use crate::com::ComDispatch;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use noodle_core::error::{NoodleError, Result};
 use noodle_core::types::Email;
-use windows::core::VARIANT;
+use windows::core::{BSTR, VARIANT};
 use windows::Win32::System::Com::IDispatch;
 
 pub struct OutlookClient {
@@ -84,15 +84,24 @@ impl OutlookClient {
     }
 
     fn map_item_to_email(&self, item: &ComDispatch) -> Result<Email> {
-        let entry_id = String::try_from(&item.get_property("EntryID")?)
-            .map_err(|_| NoodleError::Outlook("Missing EntryID".into()))?;
+        let entry_id_var = item.get_property("EntryID")?;
+        let entry_id_bstr = BSTR::try_from(&entry_id_var)
+            .map_err(|_| NoodleError::Outlook("Invalid EntryID".into()))?;
+        let entry_id = entry_id_bstr.to_string();
 
-        let subject = String::try_from(&item.get_property("Subject")?)
-            .map_err(|_| NoodleError::Outlook("Missing Subject".into()))?;
+        let subject_var = item.get_property("Subject")?;
+        let subject = BSTR::try_from(&subject_var)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| "No Subject".into());
 
-        let body_text = String::try_from(&item.get_property("Body")?).unwrap_or_default();
+        let body_var = item.get_property("Body")?;
+        let body_text = BSTR::try_from(&body_var)
+            .map(|s| s.to_string())
+            .unwrap_or_default();
 
-        let sender = String::try_from(&item.get_property("SenderEmailAddress")?)
+        let sender_var = item.get_property("SenderEmailAddress")?;
+        let sender = BSTR::try_from(&sender_var)
+            .map(|s| s.to_string())
             .unwrap_or_else(|_| "Unknown".into());
 
         let received_at_var = item.get_property("ReceivedTime")?;
