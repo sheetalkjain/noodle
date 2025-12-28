@@ -9,6 +9,9 @@ const LOCALE_USER_DEFAULT: u32 = 0x0400;
 /// A wrapper around IDispatch to make dynamic calls easier.
 pub struct ComDispatch(pub IDispatch);
 
+unsafe impl Send for ComDispatch {}
+unsafe impl Sync for ComDispatch {}
+
 impl ComDispatch {
     pub fn get_property(&self, name: &str) -> Result<VARIANT> {
         self.invoke(name, DISPATCH_PROPERTYGET.0 as u32, &mut [])
