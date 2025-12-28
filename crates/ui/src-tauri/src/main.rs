@@ -85,6 +85,7 @@ async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
 
 #[command]
 async fn get_email(state: State<'_, AppState>, id: i64) -> Result<serde_json::Value, String> {
+    use sqlx::Row;
     let email = sqlx::query("SELECT * FROM emails WHERE id = ?")
         .bind(id)
         .fetch_optional(state.sqlite.pool())
@@ -105,6 +106,7 @@ async fn get_email(state: State<'_, AppState>, id: i64) -> Result<serde_json::Va
 
 #[command]
 async fn list_prompts(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
+    use sqlx::Row;
     // Return empty list if table doesn't exist yet, but use real query
     let results = sqlx::query("SELECT id, name, prompt_template FROM prompts")
         .fetch_all(state.sqlite.pool())
@@ -113,7 +115,7 @@ async fn list_prompts(state: State<'_, AppState>) -> Result<Vec<serde_json::Valu
 
     Ok(results
         .into_iter()
-        .map(|r| {
+        .map(|r: sqlx::sqlite::SqliteRow| {
             serde_json::json!({
                 "id": r.get::<String, _>("id"),
                 "name": r.get::<String, _>("name"),
@@ -144,6 +146,7 @@ async fn save_prompt(state: State<'_, AppState>, prompt: serde_json::Value) -> R
 
 #[command]
 async fn draft_reply(state: State<'_, AppState>, email_id: i64) -> Result<String, String> {
+    use sqlx::Row;
     let email = sqlx::query("SELECT body_text FROM emails WHERE id = ?")
         .bind(email_id)
         .fetch_optional(state.sqlite.pool())

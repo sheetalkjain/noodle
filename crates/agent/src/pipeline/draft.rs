@@ -20,22 +20,25 @@ impl DraftAssistant {
     }
 
     pub async fn generate_draft(&self, email_id: i64) -> Result<String> {
+        use sqlx::Row;
         // 1. Fetch email from SQLite
-        let email =
-            sqlx::query_as::<_, storage::sqlite::EmailRow>("SELECT * FROM emails WHERE id = ?")
-                .bind(email_id)
-                .fetch_one(self.sqlite.pool())
-                .await
-                .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+        let email = sqlx::query_as::<_, storage::sqlite::EmailRow>(
+            "SELECT id, subject, sender, received_at, body_text FROM emails WHERE id = ?",
+        )
+        .bind(email_id)
+        .fetch_one(self.sqlite.pool())
+        .await
+        .map_err(|e: sqlx::Error| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
         // 2. Fetch facts (optional)
         let facts = sqlx::query("SELECT summary FROM extracted_email_facts WHERE email_id = ?")
             .bind(email_id)
             .fetch_optional(self.sqlite.pool())
             .await
-            .unwrap_or(None);
+            .map_err(|e: sqlx::Error| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
         let summary = facts
-            .map(|r| r.get::<String, _>("summary"))
+            .map(|r: sqlx::sqlite::SqliteRow| r.get::<String, _>("summary"))
             .unwrap_or_default();
 
         // 3. Fetch similar emails from Qdrant for style/context
@@ -44,8 +47,9 @@ impl DraftAssistant {
 
         let mut context = String::new();
         for point in similar {
-            if let Some(payload) = point.payload {
-                if let Some(subject) = payload.get("subject").and_then(|v| v.as_str()) {
+            let payload = point.payload;
+            if let Some(v) = payload.get("subject") {
+                if let Some(subject) = v.as_str() {
                     context.push_str(&format!("Example Subject: {}\n", subject));
                 }
             }
