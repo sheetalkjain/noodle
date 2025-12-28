@@ -10,9 +10,13 @@ pub struct SqliteStorage {
 
 impl SqliteStorage {
     pub async fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path_str = path.as_ref().to_str().ok_or_else(|| {
-            noodle_core::error::NoodleError::Storage("Invalid database path".to_string())
-        })?;
+        let path_str = path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| {
+                noodle_core::error::NoodleError::Storage("Invalid database path".to_string())
+            })?
+            .to_string();
 
         let options = sqlx::sqlite::SqliteConnectOptions::new()
             .filename(path)
