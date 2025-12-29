@@ -81,11 +81,29 @@ async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
         }),
     );
 
+    let history_days = state
+        .sqlite
+        .get_config("history_days")
+        .await
+        .unwrap_or(None)
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(90);
+
+    let sync_interval = state
+        .sqlite
+        .get_config("sync_interval")
+        .await
+        .unwrap_or(None)
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(2);
+
     let sync_manager = Arc::new(SyncManager::new(
         state.pipeline.clone(),
         state.outlook.clone(),
         state.sqlite.clone(),
         state.app_handle.clone(),
+        history_days,
+        sync_interval,
     ));
 
     tokio::spawn(async move {
@@ -93,6 +111,50 @@ async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+#[command]
+async fn get_logs(
+    state: State<'_, AppState>,
+    limit: i64,
+) -> Result<Vec<serde_json::Value>, String> {
+    state
+        .sqlite
+        .get_logs(limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+async fn get_config(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
+    state
+        .sqlite
+        .get_config(&key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+async fn save_config(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
+    state
+        .sqlite
+        .set_config(&key, &value)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[command]
+async fn save_log_cmd(
+    state: State<'_, AppState>,
+    level: String,
+    source: String,
+    message: String,
+) -> Result<(), String> {
+    state
+        .sqlite
+        .save_log(&level, &source, &message, None)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[command]
@@ -260,7 +322,11 @@ fn main() {
             get_email,
             list_prompts,
             save_prompt,
-            draft_reply
+            draft_reply,
+            get_logs,
+            get_config,
+            save_config,
+            save_log_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
