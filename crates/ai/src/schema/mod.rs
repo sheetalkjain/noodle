@@ -83,6 +83,7 @@ impl ExtractionPipeline {
             ],
             temperature: 0.0,
             response_format: Some(ResponseFormat::Json),
+            model: None,
         };
 
         let res = self.ai.chat_completion(request).await?;
