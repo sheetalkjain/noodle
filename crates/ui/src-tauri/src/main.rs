@@ -286,9 +286,10 @@ async fn draft_reply(state: State<'_, AppState>, email_id: i64) -> Result<String
             }],
             temperature: 0.7,
             response_format: None,
+            model: None,
         };
-        let response = state
-            .ai
+        let ai = state.ai.read().await;
+        let response = ai
             .chat_completion(request)
             .await
             .map_err(|e| e.to_string())?;
