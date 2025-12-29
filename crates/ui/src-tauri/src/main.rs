@@ -394,7 +394,8 @@ fn main() {
             get_logs,
             get_config,
             save_config,
-            save_log_cmd
+            save_log_cmd,
+            get_models
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
