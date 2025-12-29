@@ -44,7 +44,9 @@ impl DraftAssistant {
             .unwrap_or_default();
 
         // 3. Fetch similar emails from Qdrant for style/context
-        let embedding = self.ai.generate_embedding(&email.body_text).await?;
+        let ai = self.ai.read().await;
+        let embedding = ai.generate_embedding(&email.body_text).await?;
+        drop(ai); // Release lock before other async ops if needed, though not strictly necessary here as search_emails is on qdrant
         let similar = self.qdrant.search_emails(embedding, None, 3).await?;
 
         let mut context = String::new();
