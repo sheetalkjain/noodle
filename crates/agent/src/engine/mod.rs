@@ -9,8 +9,11 @@ use tracing::{error, info};
 pub struct SyncManager {
     pipeline: Arc<ExtractionPipeline>,
     outlook: Arc<OutlookClient>,
+    #[allow(dead_code)]
     sqlite: Arc<SqliteStorage>,
     app_handle: tauri::AppHandle,
+    history_days: i64,
+    sync_interval_mins: i64,
 }
 
 impl SyncManager {
@@ -19,12 +22,16 @@ impl SyncManager {
         outlook: Arc<OutlookClient>,
         sqlite: Arc<SqliteStorage>,
         app_handle: tauri::AppHandle,
+        history_days: i64,
+        sync_interval_mins: i64,
     ) -> Self {
         Self {
             pipeline,
             outlook,
             sqlite,
             app_handle,
+            history_days,
+            sync_interval_mins,
         }
     }
 
@@ -37,6 +44,14 @@ impl SyncManager {
                 "level": level
             }),
         );
+
+        // Also persist to DB
+        let sqlite = self.sqlite.clone();
+        let msg = message.to_string();
+        let lvl = level.to_string();
+        tokio::spawn(async move {
+            let _ = sqlite.save_log(&lvl, "BACKEND", &msg, None).await;
+        });
     }
 
     pub async fn start_background_sync(self: Arc<Self>) {
@@ -48,8 +63,8 @@ impl SyncManager {
             error!("Initial scan failed: {}", e);
         }
 
-        // 2. Periodic Delta Scan (Every 2 minutes)
-        let mut interval = interval(Duration::from_secs(120));
+        // 2. Periodic Delta Scan
+        let mut interval = interval(Duration::from_secs(self.sync_interval_mins as u64 * 60));
         loop {
             interval.tick().await;
             info!("Running periodic delta scan...");
@@ -66,17 +81,18 @@ impl SyncManager {
         for (folder_id, folder_name) in folders {
             info!("Processing folder: {}", folder_name);
             self.log_to_ui(&format!("Fetching emails from {}...", folder_name), "info");
-            let emails = match self
-                .outlook
-                .get_emails_last_n_days(90, folder_id, folder_name)
-            {
-                Ok(e) => e,
-                Err(e) => {
-                    error!("Failed to fetch emails from {}: {}", folder_name, e);
-                    self.log_to_ui(&format!("Error fetching {}: {}", folder_name, e), "error");
-                    continue;
-                }
-            };
+            let emails =
+                match self
+                    .outlook
+                    .get_emails_last_n_days(self.history_days, folder_id, folder_name)
+                {
+                    Ok(e) => e,
+                    Err(e) => {
+                        error!("Failed to fetch emails from {}: {}", folder_name, e);
+                        self.log_to_ui(&format!("Error fetching {}: {}", folder_name, e), "error");
+                        continue;
+                    }
+                };
 
             info!("Found {} emails in {}", emails.len(), folder_name);
             self.log_to_ui(

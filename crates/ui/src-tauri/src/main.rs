@@ -122,7 +122,7 @@ async fn get_logs(
         .sqlite
         .get_logs(limit)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e: noodle_core::error::NoodleError| e.to_string())
 }
 
 #[command]
@@ -131,7 +131,7 @@ async fn get_config(state: State<'_, AppState>, key: String) -> Result<Option<St
         .sqlite
         .get_config(&key)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e: noodle_core::error::NoodleError| e.to_string())
 }
 
 #[command]
@@ -140,7 +140,7 @@ async fn save_config(state: State<'_, AppState>, key: String, value: String) -> 
         .sqlite
         .set_config(&key, &value)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e: noodle_core::error::NoodleError| e.to_string())
 }
 
 #[command]
@@ -154,7 +154,7 @@ async fn save_log_cmd(
         .sqlite
         .save_log(&level, &source, &message, None)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e: noodle_core::error::NoodleError| e.to_string())
 }
 
 #[command]

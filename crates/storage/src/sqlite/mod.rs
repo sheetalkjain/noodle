@@ -226,4 +226,62 @@ impl SqliteStorage {
             "links": links_rows.into_iter().map(|l| serde_json::json!({ "source": l.get::<i64, _>("source").to_string(), "target": l.get::<i64, _>("target").to_string(), "type": l.get::<String, _>("kind") })).collect::<Vec<_>>()
         }))
     }
+
+    pub async fn save_log(
+        &self,
+        level: &str,
+        source: &str,
+        message: &str,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<()> {
+        let metadata_str = metadata.map(|m| serde_json::to_string(&m).unwrap());
+        sqlx::query("INSERT INTO logs (timestamp, level, source, message, metadata_json) VALUES (?, ?, ?, ?, ?)")
+            .bind(Utc::now())
+            .bind(level)
+            .bind(source)
+            .bind(message)
+            .bind(metadata_str)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn get_logs(&self, limit: i64) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query("SELECT * FROM logs ORDER BY timestamp DESC LIMIT ?")
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(rows.into_iter().map(|r| serde_json::json!({
+            "id": r.get::<i64, _>("id"),
+            "timestamp": r.get::<DateTime<Utc>, _>("timestamp"),
+            "level": r.get::<String, _>("level"),
+            "source": r.get::<String, _>("source"),
+            "message": r.get::<String, _>("message"),
+            "metadata": r.get::<Option<String>, _>("metadata_json").and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        })).collect())
+    }
+
+    pub async fn set_config(&self, key: &str, value: &str) -> Result<()> {
+        sqlx::query("INSERT INTO app_config (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+            .bind(key)
+            .bind(value)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn get_config(&self, key: &str) -> Result<Option<String>> {
+        let row = sqlx::query("SELECT value FROM app_config WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(row.map(|r| r.get("value")))
+    }
 }

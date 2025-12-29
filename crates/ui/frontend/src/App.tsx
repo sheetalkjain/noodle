@@ -18,29 +18,61 @@ function App() {
     const [stats, setStats] = useState<any>({ total_emails: 0, sentiments: [] })
     const [graphData, setGraphData] = useState<any>({ nodes: [], links: [] })
     const [isLoading, setIsLoading] = useState(false)
-    const [logs, setLogs] = useState<string[]>([])
-    const [showLogs, setShowLogs] = useState(false)
+    const [logs, setLogs] = useState<any[]>([])
+    const [config, setConfig] = useState<any>({
+        ollama_url: 'http://localhost:11434',
+        model_name: 'llama3',
+        sync_interval: '2',
+        history_days: '90'
+    })
 
-    const addLog = (message: string, type: 'info' | 'error' = 'info') => {
-        const timestamp = new Date().toLocaleTimeString()
-        const entry = `[${timestamp}] ${type.toUpperCase()}: ${message}`
-        console.log(entry)
-        setLogs(prev => [entry, ...prev].slice(0, 100))
+    const addLog = async (message: string, type: 'info' | 'error' | 'warn' = 'info') => {
+        const timestamp = new Date().toISOString()
+        const entry = { timestamp, level: type.toUpperCase(), source: 'FRONTEND', message }
+        console.log(`[${type.toUpperCase()}] ${message}`)
+        setLogs(prev => [entry, ...prev].slice(0, 1000))
+
+        // Optionally persist frontend logs too
+        try {
+            await invoke('save_log_cmd', { level: type.toUpperCase(), source: 'FRONTEND', message })
+        } catch (e) {
+            // ignore
+        }
     }
 
 
     const fetchStats = async () => {
-        addLog('Fetching stats...')
         try {
             const data = await invoke('get_stats')
             setStats(data)
-            addLog('Stats updated successfully')
 
             const graph = await invoke('get_graph')
             setGraphData(graph)
-            addLog('Graph data updated')
+
+            const recentLogs = await invoke('get_logs', { limit: 100 })
+            setLogs(recentLogs as any[])
         } catch (error: any) {
-            addLog(`Failed to fetch data: ${error}`, 'error')
+            console.error(`Failed to fetch data: ${error}`)
+        }
+    }
+
+    const fetchConfig = async () => {
+        try {
+            const ollama = await invoke('get_config', { key: 'ollama_url' })
+            const model = await invoke('get_config', { key: 'model_name' })
+            const interval = await invoke('get_config', { key: 'sync_interval' })
+            const history = await invoke('get_config', { key: 'history_days' })
+
+            if (ollama || model || interval || history) {
+                setConfig({
+                    ollama_url: ollama || config.ollama_url,
+                    model_name: model || config.model_name,
+                    sync_interval: interval || config.sync_interval,
+                    history_days: history || config.history_days
+                })
+            }
+        } catch (e) {
+            addLog(`Failed to fetch config: ${e}`, 'error')
         }
     }
 
@@ -61,10 +93,17 @@ function App() {
 
     useEffect(() => {
         fetchStats()
+        fetchConfig()
 
         const unlistenPromise = listen('noodle://log', (event: any) => {
             const { message, level } = event.payload
-            addLog(`[BACKEND] ${message}`, level === 'error' ? 'error' : 'info')
+            const entry = {
+                timestamp: new Date().toISOString(),
+                level: level.toUpperCase(),
+                source: 'BACKEND',
+                message
+            }
+            setLogs(prev => [entry, ...prev].slice(0, 1000))
         })
 
         window.onerror = (msg, _url, _lineNo, _columnNo, error) => {
@@ -150,15 +189,27 @@ function App() {
                     {activeTab === 'graph' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
                 </button>
 
+                <button
+                    onClick={() => handleTabChange('logs')}
+                    className={cn(
+                        "p-3 rounded-xl transition-all duration-200 group relative",
+                        activeTab === 'logs' ? "bg-blue-500/10 text-blue-400" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                    )}
+                >
+                    <LayoutDashboard className="w-5 h-5 rotate-180" />
+                    {activeTab === 'logs' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
+                </button>
+
                 <div className="mt-auto flex flex-col items-center gap-4">
                     <button
-                        onClick={() => setShowLogs(!showLogs)}
-                        className={cn("p-3 rounded-xl transition-colors", showLogs ? "text-blue-400 bg-blue-400/10" : "text-zinc-600 hover:bg-zinc-900")}
+                        onClick={() => handleTabChange('settings')}
+                        className={cn(
+                            "p-3 rounded-xl transition-all duration-200 group relative",
+                            activeTab === 'settings' ? "bg-blue-500/10 text-blue-400" : "text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                        )}
                     >
-                        <LayoutDashboard className="w-5 h-5 rotate-180" />
-                    </button>
-                    <button className="p-3 rounded-xl text-zinc-600 hover:bg-zinc-900 hover:text-zinc-300 transition-colors">
                         <Settings className="w-5 h-5" />
+                        {activeTab === 'settings' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-blue-500 rounded-r-full -ml-[18px]" />}
                     </button>
                 </div>
             </div>
@@ -302,31 +353,131 @@ function App() {
                             )}
                         </div>
                     )}
-                </main>
 
-                {/* Log Overlay */}
-                {showLogs && (
-                    <div className="absolute bottom-6 right-6 w-96 max-h-[400px] bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl flex flex-col z-50 animate-in fade-in zoom-in-95 duration-200 origin-bottom-right">
-                        <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-                            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">System Logs</h3>
-                            <button onClick={() => setLogs([])} className="text-[10px] text-zinc-600 hover:text-zinc-400 uppercase font-bold">Clear</button>
+                    {activeTab === 'logs' && (
+                        <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold">System Logs</h2>
+                                <button onClick={() => setLogs([])} className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm hover:bg-zinc-800 transition-colors">Clear All</button>
+                            </div>
+                            <div className="flex-1 overflow-auto border border-zinc-800 rounded-2xl bg-zinc-900/20 backdrop-blur-sm">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800 z-10 text-xs font-bold uppercase tracking-widest text-zinc-500">
+                                        <tr>
+                                            <th className="p-4 w-48">Timestamp</th>
+                                            <th className="p-4 w-24">Level</th>
+                                            <th className="p-4 w-32">Source</th>
+                                            <th className="p-4">Message</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-800/50 font-mono text-[13px]">
+                                        {logs.map((log, i) => (
+                                            <tr key={i} className="hover:bg-zinc-900/40 transition-colors group">
+                                                <td className="p-4 text-zinc-500">
+                                                    {new Date(log.timestamp).toLocaleTimeString()}
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                                                        log.level === 'ERROR' ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                            log.level === 'WARN' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                                                "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                                    )}>
+                                                        {log.level}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-zinc-400 uppercase text-[11px] font-bold tracking-tight">{log.source}</td>
+                                                <td className="p-4 text-zinc-300 group-hover:text-white transition-colors">{log.message}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div className="flex-1 overflow-auto p-4 space-y-2 font-mono text-[11px] selection:bg-blue-500/20">
-                            {logs.length === 0 ? (
-                                <div className="text-zinc-700 italic">No logs yet...</div>
-                            ) : (
-                                logs.map((log, i) => (
-                                    <div key={i} className={cn(
-                                        "p-2 rounded border border-zinc-800 bg-zinc-950/50",
-                                        log.includes('ERROR') ? "text-red-400 border-red-500/20" : "text-zinc-400"
-                                    )}>
-                                        {log}
+                    )}
+
+                    {activeTab === 'settings' && (
+                        <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                            <div>
+                                <h2 className="text-3xl font-bold mb-2">Settings</h2>
+                                <p className="text-zinc-500">Configure your AI agent and data synchronization preferences.</p>
+                            </div>
+
+                            <div className="space-y-6">
+                                <section className="bg-zinc-900/40 border border-zinc-800/50 rounded-2xl p-6 space-y-6">
+                                    <h3 className="text-lg font-medium flex items-center gap-2">
+                                        <Settings className="w-5 h-5 text-blue-400" />
+                                        AI Provider
+                                    </h3>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-zinc-400">Ollama API URL</label>
+                                            <input
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                value={config.ollama_url}
+                                                onChange={(e) => setConfig({ ...config, ollama_url: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-zinc-400">Model Name</label>
+                                            <input
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                value={config.model_name}
+                                                onChange={(e) => setConfig({ ...config, model_name: e.target.value })}
+                                            />
+                                        </div>
                                     </div>
-                                ))
-                            )}
+                                </section>
+
+                                <section className="bg-zinc-900/40 border border-zinc-800/50 rounded-2xl p-6 space-y-6">
+                                    <h3 className="text-lg font-medium flex items-center gap-2">
+                                        <Mail className="w-5 h-5 text-purple-400" />
+                                        Outlook Sync
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-zinc-400">Interval (minutes)</label>
+                                            <input
+                                                type="number"
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                value={config.sync_interval}
+                                                onChange={(e) => setConfig({ ...config, sync_interval: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-zinc-400">History to sync (days)</label>
+                                            <input
+                                                type="number"
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                value={config.history_days}
+                                                onChange={(e) => setConfig({ ...config, history_days: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await invoke('save_config', { key: 'ollama_url', value: config.ollama_url })
+                                                await invoke('save_config', { key: 'model_name', value: config.model_name })
+                                                await invoke('save_config', { key: 'sync_interval', value: config.sync_interval })
+                                                await invoke('save_config', { key: 'history_days', value: config.history_days })
+                                                addLog('Settings saved successfully')
+                                            } catch (e) {
+                                                addLog(`Failed to save settings: ${e}`, 'error')
+                                            }
+                                        }}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-2 rounded-lg font-medium transition-all active:scale-95"
+                                    >
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </main>
             </div>
         </div>
     ) // End App
