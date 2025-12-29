@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use agent::engine::SyncManager;
 use agent::pipeline::ExtractionPipeline;
 use ai::provider::{AiProvider, LocalProvider};
