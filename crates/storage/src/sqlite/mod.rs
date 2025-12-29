@@ -208,6 +208,29 @@ impl SqliteStorage {
         Ok(results)
     }
 
+    pub async fn get_recent_emails(&self, limit: i64) -> Result<Vec<serde_json::Value>> {
+        let rows = sqlx::query(
+            "SELECT id, subject, sender, received_at, body_text FROM emails ORDER BY received_at DESC LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                serde_json::json!({
+                    "id": row.get::<i64, _>("id"),
+                    "subject": row.get::<String, _>("subject"),
+                    "sender": row.get::<String, _>("sender"),
+                    "received_at": row.get::<chrono::DateTime<chrono::Utc>, _>("received_at"),
+                    "body_text": row.get::<String, _>("body_text")
+                })
+            })
+            .collect())
+    }
+
     pub async fn get_entities(&self) -> Result<serde_json::Value> {
         let nodes_rows = sqlx::query(
             "SELECT id, canonical_name as name, entity_type as kind FROM entities LIMIT 100",

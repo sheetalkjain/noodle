@@ -12,6 +12,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 function App() {
+    const [hasLoadedInitialEmails, setHasLoadedInitialEmails] = useState(false)
     const [emails, setEmails] = useState<any[]>([])
     const [searchQuery, setSearchQuery] = useState('')
     const [activeTab, setActiveTab] = useState('dashboard')
@@ -134,6 +135,10 @@ function App() {
     const handleTabChange = (tab: string) => {
         addLog(`Switching tab to: ${tab}`)
         setActiveTab(tab)
+        if (tab === 'emails' && !hasLoadedInitialEmails) {
+            handleSearch()
+            setHasLoadedInitialEmails(true)
+        }
     }
 
     return (

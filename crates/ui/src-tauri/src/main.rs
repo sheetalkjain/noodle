@@ -24,6 +24,15 @@ async fn search_emails(
     state: State<'_, AppState>,
     query: String,
 ) -> Result<Vec<serde_json::Value>, String> {
+    // If query is empty, return recent 50 emails
+    if query.trim().is_empty() {
+        return state
+            .sqlite
+            .get_recent_emails(50)
+            .await
+            .map_err(|e| e.to_string());
+    }
+
     // 1. Generate embedding for query
     let embedding = state
         .ai
