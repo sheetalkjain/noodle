@@ -2,15 +2,96 @@ use crate::com::ComDispatch;
 use chrono::{DateTime, Duration, Utc};
 use noodle_core::error::{NoodleError, Result};
 use noodle_core::types::Email;
+use std::thread;
+use tokio::sync::{mpsc, oneshot};
 use windows::core::{BSTR, VARIANT};
-use windows::Win32::System::Com::IDispatch;
+use windows::Win32::System::Com::{CoInitializeEx, IDispatch, COINIT_APARTMENTTHREADED};
 
+enum OutlookRequest {
+    GetEmailsLastNDays {
+        days: i64,
+        folder_id: i32,
+        folder_name: String,
+        reply: oneshot::Sender<Result<Vec<Email>>>,
+    },
+}
+
+#[derive(Clone)]
 pub struct OutlookClient {
-    namespace: ComDispatch,
+    tx: mpsc::Sender<OutlookRequest>,
 }
 
 impl OutlookClient {
     pub fn new() -> Result<Self> {
+        let (tx, mut rx) = mpsc::channel(32);
+
+        thread::spawn(move || {
+            // Initialize COM on this thread as STA
+            unsafe {
+                let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                if hr.is_err() {
+                    tracing::error!("Failed to initialize COM in Outlook worker: {:?}", hr);
+                    return;
+                }
+            }
+
+            // Create the actual COM object
+            let inner = match InnerClient::new() {
+                Ok(client) => client,
+                Err(e) => {
+                    tracing::error!("Failed to create InnerClient: {:?}", e);
+                    return;
+                }
+            };
+
+            // Process requests
+            while let Some(msg) = rx.blocking_recv() {
+                match msg {
+                    OutlookRequest::GetEmailsLastNDays {
+                        days,
+                        folder_id,
+                        folder_name,
+                        reply,
+                    } => {
+                        let result = inner.get_emails_last_n_days(days, folder_id, &folder_name);
+                        let _ = reply.send(result);
+                    }
+                }
+            }
+        });
+
+        Ok(Self { tx })
+    }
+
+    pub async fn get_emails_last_n_days(
+        &self,
+        days: i64,
+        folder_id: i32,
+        folder_name: &str,
+    ) -> Result<Vec<Email>> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(OutlookRequest::GetEmailsLastNDays {
+                days,
+                folder_id,
+                folder_name: folder_name.to_string(),
+                reply: reply_tx,
+            })
+            .await
+            .map_err(|e| NoodleError::Outlook(format!("Failed to send request: {}", e)))?;
+
+        reply_rx
+            .await
+            .map_err(|e| NoodleError::Outlook(format!("Failed to receive response: {}", e)))?
+    }
+}
+
+struct InnerClient {
+    namespace: ComDispatch,
+}
+
+impl InnerClient {
+    fn new() -> Result<Self> {
         let app_clsid = windows::core::GUID::from("0006F03A-0000-0000-C000-000000000046");
         unsafe {
             let app: IDispatch = windows::Win32::System::Com::CoCreateInstance(
@@ -33,7 +114,7 @@ impl OutlookClient {
         }
     }
 
-    pub fn get_emails_last_n_days(
+    fn get_emails_last_n_days(
         &self,
         days: i64,
         folder_id: i32,
@@ -58,9 +139,7 @@ impl OutlookClient {
             NoodleError::Outlook(format!("Failed to get Items for {}: {}", folder_name, e))
         })?);
 
-        // Filter items
         let filter_date = Utc::now() - Duration::days(days);
-        // Using a more standard format for Outlook filters (English month is most robust)
         let filter = format!(
             "[ReceivedTime] >= '{}'",
             filter_date.format("%d %b %Y %H:%M %p")
@@ -68,7 +147,6 @@ impl OutlookClient {
 
         tracing::info!("Applying Outlook filter for {}: {}", folder_name, filter);
 
-        // We catch errors here and log them specifically
         let filtered_items_var =
             match items.call_method("Restrict", &mut [VARIANT::from(filter.as_str())]) {
                 Ok(v) => v,
@@ -145,8 +223,6 @@ impl OutlookClient {
         let received_at_var = item.get_property("ReceivedTime")?;
         let received_at_double = f64::try_from(&received_at_var).unwrap_or(0.0);
 
-        // Convert DATE (double) to chrono::DateTime<Utc>
-        // OLE Automation DATE is days since Dec 30, 1899
         let unix_epoch_offset_days = 25569.0;
         let seconds_in_day = 86400.0;
         let unix_timestamp = (received_at_double - unix_epoch_offset_days) * seconds_in_day;
@@ -154,26 +230,26 @@ impl OutlookClient {
             DateTime::from_timestamp(unix_timestamp as i64, 0).unwrap_or_else(|| Utc::now());
 
         Ok(Email {
-            id: 0, // Assigned by storage
+            id: 0,
             store_id: "outlook".into(),
             entry_id,
-            conversation_id: None, // Could be extracted if needed
+            conversation_id: None,
             folder: "Inbox".into(),
             subject,
             sender,
-            to: "".into(), // Could be extracted if needed
+            to: "".into(),
             cc: None,
             bcc: None,
-            sent_at: received_at, // Simplification
+            sent_at: received_at,
             received_at,
             body_text,
             body_html: None,
-            importance: 1, // Normal
+            importance: 1,
             categories: None,
             flags: None,
             internet_message_id: None,
             last_indexed_at: Utc::now(),
-            hash: "".into(), // Computed by sync manager
+            hash: "".into(),
             excluded_reason: None,
         })
     }

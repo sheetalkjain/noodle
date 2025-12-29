@@ -81,18 +81,18 @@ impl SyncManager {
         for (folder_id, folder_name) in folders {
             info!("Processing folder: {}", folder_name);
             self.log_to_ui(&format!("Fetching emails from {}...", folder_name), "info");
-            let emails =
-                match self
-                    .outlook
-                    .get_emails_last_n_days(self.history_days, folder_id, folder_name)
-                {
-                    Ok(e) => e,
-                    Err(e) => {
-                        error!("Failed to fetch emails from {}: {}", folder_name, e);
-                        self.log_to_ui(&format!("Error fetching {}: {}", folder_name, e), "error");
-                        continue;
-                    }
-                };
+            let emails = match self
+                .outlook
+                .get_emails_last_n_days(self.history_days, folder_id, folder_name)
+                .await
+            {
+                Ok(e) => e,
+                Err(e) => {
+                    error!("Failed to fetch emails from {}: {}", folder_name, e);
+                    self.log_to_ui(&format!("Error fetching {}: {}", folder_name, e), "error");
+                    continue;
+                }
+            };
 
             info!("Found {} emails in {}", emails.len(), folder_name);
             self.log_to_ui(
@@ -128,6 +128,7 @@ impl SyncManager {
             let emails = match self
                 .outlook
                 .get_emails_last_n_days(1, folder_id, folder_name)
+                .await
             {
                 Ok(e) => e,
                 Err(e) => {
