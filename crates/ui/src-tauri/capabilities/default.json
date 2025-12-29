@@ -11,6 +11,7 @@
         "core:window:default",
         "core:app:default",
         "core:resources:default",
-        "core:path:default"
+        "core:path:default",
+        "app:allow-get-models"
     ]
 }

@@ -2,18 +2,19 @@
 
 use agent::engine::SyncManager;
 use agent::pipeline::ExtractionPipeline;
-use ai::provider::{AiProvider, LocalProvider};
+use ai::provider::{AiProvider, OllamaProvider, OpenAICompatibleProvider};
 use outlook::client::OutlookClient;
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
 use tauri::{command, Emitter, Manager, State};
+use tokio::sync::RwLock;
 use tracing::{error, info};
 
 struct AppState {
     sqlite: Arc<SqliteStorage>,
     qdrant: Arc<QdrantStorage>,
-    ai: Arc<dyn AiProvider>,
+    ai: Arc<RwLock<Arc<dyn AiProvider>>>, // Wrap in RwLock for runtime updates
     pipeline: Arc<ExtractionPipeline>,
     outlook: Arc<OutlookClient>,
     app_handle: tauri::AppHandle,
@@ -34,8 +35,9 @@ async fn search_emails(
     }
 
     // 1. Generate embedding for query
-    let embedding = state
-        .ai
+    // 1. Generate embedding for query
+    let ai = state.ai.read().await;
+    let embedding = ai
         .generate_embedding(&query)
         .await
         .map_err(|e| e.to_string())?;
@@ -151,7 +153,43 @@ async fn save_config(state: State<'_, AppState>, key: String, value: String) -> 
         .sqlite
         .set_config(&key, &value)
         .await
-        .map_err(|e: noodle_core::error::NoodleError| e.to_string())
+        .map_err(|e: noodle_core::error::NoodleError| e.to_string())?;
+
+    // If AI settings changed, re-initialize provider
+    if key == "ollama_url" || key == "model_name" || key == "provider_type" || key == "api_key" {
+        let provider_type = state
+            .sqlite
+            .get_config("provider_type")
+            .await
+            .unwrap_or(Some("ollama".to_string()))
+            .unwrap_or("ollama".to_string());
+        let url = state
+            .sqlite
+            .get_config("ollama_url")
+            .await
+            .unwrap_or(Some("http://localhost:11434".to_string()))
+            .unwrap_or("http://localhost:11434".to_string());
+        let model = state.sqlite.get_config("model_name").await.unwrap_or(None);
+        let api_key = state.sqlite.get_config("api_key").await.unwrap_or(None);
+
+        let new_provider: Arc<dyn AiProvider> = if provider_type == "openai" {
+            Arc::new(OpenAICompatibleProvider::new(url, api_key, model))
+        } else {
+            // Default to Ollama
+            Arc::new(OllamaProvider::new(url, model))
+        };
+
+        let mut ai_lock = state.ai.write().await;
+        *ai_lock = new_provider;
+        info!("Re-initialized AI provider: {}", provider_type);
+    }
+    Ok(())
+}
+
+#[command]
+async fn get_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let ai = state.ai.read().await;
+    ai.list_models().await.map_err(|e| e.to_string())
 }
 
 #[command]
@@ -296,8 +334,26 @@ fn main() {
                     }
                 };
 
-                let ai: Arc<dyn AiProvider> =
-                    Arc::new(LocalProvider::new("http://localhost:1234/v1".into(), None));
+                let provider_type = sqlite
+                    .get_config("provider_type")
+                    .await
+                    .unwrap_or(Some("ollama".into()))
+                    .unwrap_or("ollama".into());
+                let url = sqlite
+                    .get_config("ollama_url")
+                    .await
+                    .unwrap_or(Some("http://localhost:11434".into()))
+                    .unwrap_or("http://localhost:11434".into());
+                let model = sqlite.get_config("model_name").await.unwrap_or(None);
+                let api_key = sqlite.get_config("api_key").await.unwrap_or(None);
+
+                let ai_provider: Arc<dyn AiProvider> = if provider_type == "openai" {
+                    Arc::new(OpenAICompatibleProvider::new(url, api_key, model))
+                } else {
+                    Arc::new(OllamaProvider::new(url, model))
+                };
+
+                let ai = Arc::new(RwLock::new(ai_provider));
 
                 let pipeline = Arc::new(ExtractionPipeline::new(
                     sqlite.clone(),

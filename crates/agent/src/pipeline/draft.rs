@@ -4,17 +4,19 @@ use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
 
+use tokio::sync::RwLock;
+
 pub struct DraftAssistant {
     sqlite: Arc<SqliteStorage>,
     qdrant: Arc<QdrantStorage>,
-    ai: Arc<dyn AiProvider>,
+    ai: Arc<RwLock<Arc<dyn AiProvider>>>,
 }
 
 impl DraftAssistant {
     pub fn new(
         sqlite: Arc<SqliteStorage>,
         qdrant: Arc<QdrantStorage>,
-        ai: Arc<dyn AiProvider>,
+        ai: Arc<RwLock<Arc<dyn AiProvider>>>,
     ) -> Self {
         Self { sqlite, qdrant, ai }
     }
@@ -80,9 +82,11 @@ impl DraftAssistant {
             }],
             temperature: 0.7,
             response_format: None,
+            model: None,
         };
 
-        let res = self.ai.chat_completion(request).await?;
+        let ai = self.ai.read().await;
+        let res = ai.chat_completion(request).await?;
         Ok(res.content)
     }
 }

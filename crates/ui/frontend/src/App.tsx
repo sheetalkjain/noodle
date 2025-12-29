@@ -24,8 +24,11 @@ function App() {
         ollama_url: 'http://localhost:11434',
         model_name: 'llama3',
         sync_interval: '2',
-        history_days: '90'
+        history_days: '90',
+        provider_type: 'ollama',
+        api_key: ''
     })
+    const [availableModels, setAvailableModels] = useState<string[]>([])
 
     const addLog = async (message: string, type: 'info' | 'error' | 'warn' = 'info') => {
         const timestamp = new Date().toISOString()
@@ -63,13 +66,17 @@ function App() {
             const model = await invoke('get_config', { key: 'model_name' })
             const interval = await invoke('get_config', { key: 'sync_interval' })
             const history = await invoke('get_config', { key: 'history_days' })
+            const provider = await invoke('get_config', { key: 'provider_type' })
+            const apiKey = await invoke('get_config', { key: 'api_key' })
 
-            if (ollama || model || interval || history) {
+            if (ollama || model || interval || history || provider || apiKey) {
                 setConfig({
                     ollama_url: ollama || config.ollama_url,
                     model_name: model || config.model_name,
                     sync_interval: interval || config.sync_interval,
-                    history_days: history || config.history_days
+                    history_days: history || config.history_days,
+                    provider_type: provider || 'ollama',
+                    api_key: apiKey || ''
                 })
             }
         } catch (e) {
@@ -416,20 +423,74 @@ function App() {
                                     </h3>
                                     <div className="grid grid-cols-1 gap-4">
                                         <div className="space-y-2">
-                                            <label className="text-sm text-zinc-400">Ollama API URL</label>
+                                            <label className="text-sm text-zinc-400">Provider Type</label>
+                                            <select
+                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                value={config.provider_type}
+                                                onChange={(e) => setConfig({ ...config, provider_type: e.target.value })}
+                                            >
+                                                <option value="ollama">Ollama (Local)</option>
+                                                <option value="openai">Lemonade / Foundry / OpenAI (Compatible)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-sm text-zinc-400">{config.provider_type === 'ollama' ? 'Ollama URL' : 'Base URL'}</label>
                                             <input
                                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
                                                 value={config.ollama_url}
                                                 onChange={(e) => setConfig({ ...config, ollama_url: e.target.value })}
+                                                placeholder={config.provider_type === 'ollama' ? "http://localhost:11434" : "https://api.openai.com/v1"}
                                             />
                                         </div>
+
+                                        {config.provider_type === 'openai' && (
+                                            <div className="space-y-2">
+                                                <label className="text-sm text-zinc-400">API Key</label>
+                                                <input
+                                                    type="password"
+                                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                    value={config.api_key}
+                                                    onChange={(e) => setConfig({ ...config, api_key: e.target.value })}
+                                                    placeholder="sk-..."
+                                                />
+                                            </div>
+                                        )}
+
                                         <div className="space-y-2">
                                             <label className="text-sm text-zinc-400">Model Name</label>
-                                            <input
-                                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
-                                                value={config.model_name}
-                                                onChange={(e) => setConfig({ ...config, model_name: e.target.value })}
-                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    list="model-suggestions"
+                                                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
+                                                    value={config.model_name}
+                                                    onChange={(e) => setConfig({ ...config, model_name: e.target.value })}
+                                                    placeholder="e.g. gpt-4 or llama3"
+                                                />
+                                                <datalist id="model-suggestions">
+                                                    {availableModels.map(m => <option key={m} value={m} />)}
+                                                </datalist>
+                                                <button
+                                                    onClick={async () => {
+                                                        addLog(`Fetching models from ${config.ollama_url}...`)
+                                                        try {
+                                                            // Temporarily save config to ensure backend uses correct credentials for fetch
+                                                            await invoke('save_config', { key: 'ollama_url', value: config.ollama_url })
+                                                            await invoke('save_config', { key: 'provider_type', value: config.provider_type })
+                                                            await invoke('save_config', { key: 'api_key', value: config.api_key })
+
+                                                            const models = await invoke('get_models') as string[]
+                                                            setAvailableModels(models)
+                                                            addLog(`Found ${models.length} models`)
+                                                        } catch (e: any) {
+                                                            addLog(`Failed to fetch models: ${e}`, 'error')
+                                                        }
+                                                    }}
+                                                    className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                                                >
+                                                    Fetch Models
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </section>
@@ -469,6 +530,8 @@ function App() {
                                                 await invoke('save_config', { key: 'model_name', value: config.model_name })
                                                 await invoke('save_config', { key: 'sync_interval', value: config.sync_interval })
                                                 await invoke('save_config', { key: 'history_days', value: config.history_days })
+                                                await invoke('save_config', { key: 'provider_type', value: config.provider_type })
+                                                await invoke('save_config', { key: 'api_key', value: config.api_key })
                                                 addLog('Settings saved successfully')
                                             } catch (e) {
                                                 addLog(`Failed to save settings: ${e}`, 'error')

@@ -12,17 +12,19 @@ use storage::sqlite::SqliteStorage;
 use tracing::info;
 use uuid::Uuid;
 
+use tokio::sync::RwLock;
+
 pub struct ExtractionPipeline {
     sqlite: Arc<SqliteStorage>,
     qdrant: Arc<QdrantStorage>,
-    ai: Arc<dyn AiProvider>,
+    ai: Arc<RwLock<Arc<dyn AiProvider>>>,
 }
 
 impl ExtractionPipeline {
     pub fn new(
         sqlite: Arc<SqliteStorage>,
         qdrant: Arc<QdrantStorage>,
-        ai: Arc<dyn AiProvider>,
+        ai: Arc<RwLock<Arc<dyn AiProvider>>>,
     ) -> Self {
         Self { sqlite, qdrant, ai }
     }
@@ -50,7 +52,8 @@ impl ExtractionPipeline {
         self.sqlite.save_facts(&facts).await?;
 
         // 4. Generate embeddings
-        let embedding = self.ai.generate_embedding(&email.body_text).await?;
+        let ai = self.ai.read().await;
+        let embedding = ai.generate_embedding(&email.body_text).await?;
 
         // 5. Persist to Qdrant
         let payload = qdrant_client::Payload::new(); // Add metadata
@@ -95,9 +98,11 @@ Body: {}",
             }],
             temperature: 0.0,
             response_format: Some(ai::provider::ResponseFormat::Json),
+            model: None,
         };
 
-        let response = self.ai.chat_completion(request).await?;
+        let ai = self.ai.read().await;
+        let response = ai.chat_completion(request).await?;
         let fact_data: serde_json::Value = serde_json::from_str(&response.content)
             .map_err(|e: serde_json::Error| noodle_core::error::NoodleError::AI(e.to_string()))?;
 
