@@ -12,6 +12,6 @@
         "core:app:default",
         "core:resources:default",
         "core:path:default",
-        "ui:default"
+        "noodle-ui:default"
     ]
 }
