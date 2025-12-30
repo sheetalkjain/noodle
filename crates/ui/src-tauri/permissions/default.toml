@@ -1,0 +1,74 @@
+[[permission]]
+identifier = "allow-search-emails"
+description = "Enables the search_emails command"
+commands.allow = ["search_emails"]
+
+[[permission]]
+identifier = "allow-get-stats"
+description = "Enables the get_stats command"
+commands.allow = ["get_stats"]
+
+[[permission]]
+identifier = "allow-get-graph"
+description = "Enables the get_graph command"
+commands.allow = ["get_graph"]
+
+[[permission]]
+identifier = "allow-start-sync"
+description = "Enables the start_sync command"
+commands.allow = ["start_sync"]
+
+[[permission]]
+identifier = "allow-get-logs"
+description = "Enables the get_logs command"
+commands.allow = ["get_logs"]
+
+[[permission]]
+identifier = "allow-get-config"
+description = "Enables the get_config command"
+commands.allow = ["get_config"]
+
+[[permission]]
+identifier = "allow-save-config"
+description = "Enables the save_config command"
+commands.allow = ["save_config"]
+
+[[permission]]
+identifier = "allow-save-log-cmd"
+description = "Enables the save_log_cmd command"
+commands.allow = ["save_log_cmd"]
+
+[[permission]]
+identifier = "allow-get-email"
+description = "Enables the get_email command"
+commands.allow = ["get_email"]
+
+[[permission]]
+identifier = "allow-list-prompts"
+description = "Enables the list_prompts command"
+commands.allow = ["list_prompts"]
+
+[[permission]]
+identifier = "allow-save-prompt"
+description = "Enables the save_prompt command"
+commands.allow = ["save_prompt"]
+
+[[permission]]
+identifier = "allow-draft-reply"
+description = "Enables the draft_reply command"
+commands.allow = ["draft_reply"]
+
+[[permission]]
+identifier = "allow-get-models"
+description = "Enables the get_models command"
+commands.allow = ["get_models"]
+
+[[permission]]
+identifier = "allow-force-exit"
+description = "Enables the force_exit command"
+commands.allow = ["force_exit"]
+
+[[permission]]
+identifier = "allow-request-exit"
+description = "Enables the request_exit command"
+commands.allow = ["request_exit"]
