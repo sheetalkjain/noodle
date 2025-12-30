@@ -299,10 +299,93 @@ async fn draft_reply(state: State<'_, AppState>, email_id: i64) -> Result<String
     }
 }
 
+#[command]
+async fn force_exit(app_handle: tauri::AppHandle) {
+    app_handle.exit(0);
+}
+
+#[command]
+async fn request_exit(state: State<'_, AppState>) -> Result<(), String> {
+    let confirm = state
+        .sqlite
+        .get_config("confirm_exit")
+        .await
+        .unwrap_or(Some("true".to_string()))
+        .unwrap_or("true".to_string())
+        != "false";
+
+    if confirm {
+        let window = state.app_handle.get_webview_window("main").ok_or("No main window")?;
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+        state.app_handle.emit("noodle://show-exit-confirm", ()).map_err(|e| e.to_string())?;
+    } else {
+        state.app_handle.exit(0);
+    }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle().clone();
+
+            // Initialize Tray
+            use tauri::menu::{Menu, MenuItem};
+            use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
+
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let _tray = TrayIconBuilder::with_id("tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, event| {
+                    match event.id().as_ref() {
+                        "quit" => {
+                             let app_clone = app.clone();
+                             tauri::async_runtime::spawn(async move {
+                                let state = app_clone.state::<AppState>();
+                                let confirm = state
+                                    .sqlite
+                                    .get_config("confirm_exit")
+                                    .await
+                                    .unwrap_or(Some("true".to_string()))
+                                    .unwrap_or("true".to_string())
+                                    != "false";
+                                
+                                if confirm {
+                                    if let Some(window) = app_clone.get_webview_window("main") {
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                        let _ = app_clone.emit("noodle://show-exit-confirm", ());
+                                    }
+                                } else {
+                                    app_clone.exit(0);
+                                }
+                             });
+                        }
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
             tauri::async_runtime::block_on(async move {
                 let app_dir = match app_handle.path().app_data_dir() {
@@ -322,7 +405,6 @@ fn main() {
                     Ok(s) => Arc::new(s),
                     Err(e) => {
                         error!("Failed to initialize SQLite: {}", e);
-                        // We still need to manage state even if broken, or app will crash on invoke
                         return;
                     }
                 };
@@ -382,6 +464,12 @@ fn main() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             search_emails,
             get_stats,
@@ -395,7 +483,9 @@ fn main() {
             get_config,
             save_config,
             save_log_cmd,
-            get_models
+            get_models,
+            force_exit,
+            request_exit
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

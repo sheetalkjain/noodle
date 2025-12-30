@@ -26,9 +26,11 @@ function App() {
         sync_interval: '2',
         history_days: '90',
         provider_type: 'ollama',
-        api_key: ''
+        api_key: '',
+        confirm_exit: 'true'
     })
     const [availableModels, setAvailableModels] = useState<string[]>([])
+    const [showExitConfirm, setShowExitConfirm] = useState(false)
 
     const addLog = async (message: string, type: 'info' | 'error' | 'warn' = 'info') => {
         const timestamp = new Date().toISOString()
@@ -68,15 +70,17 @@ function App() {
             const history = await invoke('get_config', { key: 'history_days' })
             const provider = await invoke('get_config', { key: 'provider_type' })
             const apiKey = await invoke('get_config', { key: 'api_key' })
+            const confirm = await invoke('get_config', { key: 'confirm_exit' })
 
-            if (ollama || model || interval || history || provider || apiKey) {
+            if (ollama || model || interval || history || provider || apiKey || confirm) {
                 setConfig({
                     ollama_url: ollama || config.ollama_url,
                     model_name: model || config.model_name,
                     sync_interval: interval || config.sync_interval,
                     history_days: history || config.history_days,
                     provider_type: provider || 'ollama',
-                    api_key: apiKey || ''
+                    api_key: apiKey || '',
+                    confirm_exit: confirm || 'true'
                 })
             }
         } catch (e) {
@@ -114,6 +118,18 @@ function App() {
             setLogs(prev => [entry, ...prev].slice(0, 1000))
         })
 
+        const unlistenExit = listen('noodle://show-exit-confirm', () => {
+            setShowExitConfirm(true)
+        })
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.altKey && e.key === 'F4') {
+                e.preventDefault()
+                invoke('request_exit').catch(err => console.error(err))
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+
         window.onerror = (msg, _url, _lineNo, _columnNo, error) => {
             addLog(`Global Error: ${msg} ${error}`, 'error')
             return false
@@ -125,6 +141,8 @@ function App() {
 
         return () => {
             unlistenPromise.then(unlisten => unlisten())
+            unlistenExit.then(unlisten => unlisten())
+            window.removeEventListener('keydown', handleKeyDown)
         }
     }, [])
 
@@ -520,6 +538,22 @@ function App() {
                                             />
                                         </div>
                                     </div>
+
+                                    <div className="pt-4 border-t border-zinc-800/50">
+                                        <label className="flex items-center gap-3 cursor-pointer group">
+                                            <div className="relative">
+                                                <input
+                                                    type="checkbox"
+                                                    className="peer sr-only"
+                                                    checked={config.confirm_exit !== 'false'}
+                                                    onChange={(e) => setConfig({ ...config, confirm_exit: e.target.checked ? 'true' : 'false' })}
+                                                />
+                                                <div className="w-10 h-6 bg-zinc-800 rounded-full peer-checked:bg-blue-600 transition-colors" />
+                                                <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-4" />
+                                            </div>
+                                            <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Confirm before exiting app</span>
+                                        </label>
+                                    </div>
                                 </section>
 
                                 <div className="flex justify-end gap-3">
@@ -532,6 +566,7 @@ function App() {
                                                 await invoke('save_config', { key: 'history_days', value: config.history_days })
                                                 await invoke('save_config', { key: 'provider_type', value: config.provider_type })
                                                 await invoke('save_config', { key: 'api_key', value: config.api_key })
+                                                await invoke('save_config', { key: 'confirm_exit', value: config.confirm_exit })
                                                 addLog('Settings saved successfully')
                                             } catch (e) {
                                                 addLog(`Failed to save settings: ${e}`, 'error')
@@ -546,8 +581,34 @@ function App() {
                         </div>
                     )}
                 </main>
-            </div>
-        </div>
+            </div >
+
+            {showExitConfirm && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-lg font-bold text-white mb-2">Quit Application?</h3>
+                        <p className="text-zinc-400 text-sm mb-6">
+                            This will stop the AI agent and Outlook sync. Are you sure you want to quit?
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowExitConfirm(false)}
+                                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => invoke('force_exit')}
+                                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/20 transition-colors"
+                            >
+                                Quit Noodle
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )
+            }
+        </div >
     ) // End App
 }
 
