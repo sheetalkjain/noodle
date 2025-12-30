@@ -163,20 +163,36 @@ async fn save_config(state: State<'_, AppState>, key: String, value: String) -> 
             .await
             .unwrap_or(Some("ollama".to_string()))
             .unwrap_or("ollama".to_string());
-        let url = state
-            .sqlite
-            .get_config("ollama_url")
-            .await
-            .unwrap_or(Some("http://localhost:11434".to_string()))
-            .unwrap_or("http://localhost:11434".to_string());
+
+        let url = match provider_type.as_str() {
+            "lemonade" => state
+                .sqlite
+                .get_config("lemonade_url")
+                .await
+                .unwrap_or(Some("http://localhost:8000/v1".to_string()))
+                .unwrap_or("http://localhost:8000/v1".to_string()),
+            "foundry" => state
+                .sqlite
+                .get_config("foundry_url")
+                .await
+                .unwrap_or(Some("http://localhost:5000/v1".to_string()))
+                .unwrap_or("http://localhost:5000/v1".to_string()),
+            "openai" | _ => state
+                .sqlite
+                .get_config("ollama_url")
+                .await
+                .unwrap_or(Some("http://localhost:11434".to_string()))
+                .unwrap_or("http://localhost:11434".to_string()),
+        };
+
         let model = state.sqlite.get_config("model_name").await.unwrap_or(None);
         let api_key = state.sqlite.get_config("api_key").await.unwrap_or(None);
 
-        let new_provider: Arc<dyn AiProvider> = if provider_type == "openai" {
-            Arc::new(OpenAICompatibleProvider::new(url, api_key, model))
-        } else {
-            // Default to Ollama
+        let new_provider: Arc<dyn AiProvider> = if provider_type == "ollama" {
             Arc::new(OllamaProvider::new(url, model))
+        } else {
+            // Lemonade, Foundry, and OpenAI all use OpenAI-compatible API
+            Arc::new(OpenAICompatibleProvider::new(url, api_key, model))
         };
 
         let mut ai_lock = state.ai.write().await;
@@ -315,10 +331,16 @@ async fn request_exit(state: State<'_, AppState>) -> Result<(), String> {
         != "false";
 
     if confirm {
-        let window = state.app_handle.get_webview_window("main").ok_or("No main window")?;
+        let window = state
+            .app_handle
+            .get_webview_window("main")
+            .ok_or("No main window")?;
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
-        state.app_handle.emit("noodle://show-exit-confirm", ()).map_err(|e| e.to_string())?;
+        state
+            .app_handle
+            .emit("noodle://show-exit-confirm", ())
+            .map_err(|e| e.to_string())?;
     } else {
         state.app_handle.exit(0);
     }
@@ -342,42 +364,44 @@ fn main() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "quit" => {
-                             let app_clone = app.clone();
-                             tauri::async_runtime::spawn(async move {
-                                let state = app_clone.state::<AppState>();
-                                let confirm = state
-                                    .sqlite
-                                    .get_config("confirm_exit")
-                                    .await
-                                    .unwrap_or(Some("true".to_string()))
-                                    .unwrap_or("true".to_string())
-                                    != "false";
-                                
-                                if confirm {
-                                    if let Some(window) = app_clone.get_webview_window("main") {
-                                        let _ = window.show();
-                                        let _ = window.set_focus();
-                                        let _ = app_clone.emit("noodle://show-exit-confirm", ());
-                                    }
-                                } else {
-                                    app_clone.exit(0);
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "quit" => {
+                        let app_clone = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app_clone.state::<AppState>();
+                            let confirm = state
+                                .sqlite
+                                .get_config("confirm_exit")
+                                .await
+                                .unwrap_or(Some("true".to_string()))
+                                .unwrap_or("true".to_string())
+                                != "false";
+
+                            if confirm {
+                                if let Some(window) = app_clone.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                    let _ = app_clone.emit("noodle://show-exit-confirm", ());
                                 }
-                             });
-                        }
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                            } else {
+                                app_clone.exit(0);
                             }
-                        }
-                        _ => {}
+                        });
                     }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        ..
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -422,18 +446,32 @@ fn main() {
                     .await
                     .unwrap_or(Some("ollama".into()))
                     .unwrap_or("ollama".into());
-                let url = sqlite
-                    .get_config("ollama_url")
-                    .await
-                    .unwrap_or(Some("http://localhost:11434".into()))
-                    .unwrap_or("http://localhost:11434".into());
+
+                let url = match provider_type.as_str() {
+                    "lemonade" => sqlite
+                        .get_config("lemonade_url")
+                        .await
+                        .unwrap_or(Some("http://localhost:8000/v1".to_string()))
+                        .unwrap_or("http://localhost:8000/v1".to_string()),
+                    "foundry" => sqlite
+                        .get_config("foundry_url")
+                        .await
+                        .unwrap_or(Some("http://localhost:5000/v1".to_string()))
+                        .unwrap_or("http://localhost:5000/v1".to_string()),
+                    "openai" | _ => sqlite
+                        .get_config("ollama_url")
+                        .await
+                        .unwrap_or(Some("http://localhost:11434".to_string()))
+                        .unwrap_or("http://localhost:11434".to_string()),
+                };
+
                 let model = sqlite.get_config("model_name").await.unwrap_or(None);
                 let api_key = sqlite.get_config("api_key").await.unwrap_or(None);
 
-                let ai_provider: Arc<dyn AiProvider> = if provider_type == "openai" {
-                    Arc::new(OpenAICompatibleProvider::new(url, api_key, model))
-                } else {
+                let ai_provider: Arc<dyn AiProvider> = if provider_type == "ollama" {
                     Arc::new(OllamaProvider::new(url, model))
+                } else {
+                    Arc::new(OpenAICompatibleProvider::new(url, api_key, model))
                 };
 
                 let ai = Arc::new(RwLock::new(ai_provider));

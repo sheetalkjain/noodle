@@ -27,7 +27,9 @@ function App() {
         history_days: '90',
         provider_type: 'ollama',
         api_key: '',
-        confirm_exit: 'true'
+        confirm_exit: 'true',
+        lemonade_url: 'http://localhost:8000/v1',
+        foundry_url: 'http://localhost:5000/v1'
     })
     const [availableModels, setAvailableModels] = useState<string[]>([])
     const [showExitConfirm, setShowExitConfirm] = useState(false)
@@ -71,8 +73,10 @@ function App() {
             const provider = await invoke('get_config', { key: 'provider_type' })
             const apiKey = await invoke('get_config', { key: 'api_key' })
             const confirm = await invoke('get_config', { key: 'confirm_exit' })
+            const lemonade = await invoke('get_config', { key: 'lemonade_url' })
+            const foundry = await invoke('get_config', { key: 'foundry_url' })
 
-            if (ollama || model || interval || history || provider || apiKey || confirm) {
+            if (ollama || model || interval || history || provider || apiKey || confirm || lemonade || foundry) {
                 setConfig({
                     ollama_url: ollama || config.ollama_url,
                     model_name: model || config.model_name,
@@ -80,7 +84,9 @@ function App() {
                     history_days: history || config.history_days,
                     provider_type: provider || 'ollama',
                     api_key: apiKey || '',
-                    confirm_exit: confirm || 'true'
+                    confirm_exit: confirm || 'true',
+                    lemonade_url: lemonade || 'http://localhost:8000/v1',
+                    foundry_url: foundry || 'http://localhost:5000/v1'
                 })
             }
         } catch (e) {
@@ -448,17 +454,39 @@ function App() {
                                                 onChange={(e) => setConfig({ ...config, provider_type: e.target.value })}
                                             >
                                                 <option value="ollama">Ollama (Local)</option>
-                                                <option value="openai">Lemonade / Foundry / OpenAI (Compatible)</option>
+                                                <option value="lemonade">Lemonade (AMD)</option>
+                                                <option value="foundry">Foundry Local (Microsoft)</option>
+                                                <option value="openai">OpenAI Compatible (Cloud)</option>
                                             </select>
                                         </div>
 
                                         <div className="space-y-2">
-                                            <label className="text-sm text-zinc-400">{config.provider_type === 'ollama' ? 'Ollama URL' : 'Base URL'}</label>
+                                            <label className="text-sm text-zinc-400">
+                                                {config.provider_type === 'ollama' ? 'Ollama URL' :
+                                                    config.provider_type === 'lemonade' ? 'Lemonade Endpoint' :
+                                                        config.provider_type === 'foundry' ? 'Foundry Endpoint' :
+                                                            'Base URL'}
+                                            </label>
                                             <input
                                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 focus:border-blue-500 outline-none transition-all"
-                                                value={config.ollama_url}
-                                                onChange={(e) => setConfig({ ...config, ollama_url: e.target.value })}
-                                                placeholder={config.provider_type === 'ollama' ? "http://localhost:11434" : "https://api.openai.com/v1"}
+                                                value={
+                                                    config.provider_type === 'ollama' ? config.ollama_url :
+                                                        config.provider_type === 'lemonade' ? config.lemonade_url :
+                                                            config.provider_type === 'foundry' ? config.foundry_url :
+                                                                config.ollama_url // fallback for generic openai
+                                                }
+                                                onChange={(e) => {
+                                                    if (config.provider_type === 'ollama') setConfig({ ...config, ollama_url: e.target.value })
+                                                    else if (config.provider_type === 'lemonade') setConfig({ ...config, lemonade_url: e.target.value })
+                                                    else if (config.provider_type === 'foundry') setConfig({ ...config, foundry_url: e.target.value })
+                                                    else setConfig({ ...config, ollama_url: e.target.value })
+                                                }}
+                                                placeholder={
+                                                    config.provider_type === 'ollama' ? "http://localhost:11434" :
+                                                        config.provider_type === 'lemonade' ? "http://localhost:8000/v1" :
+                                                            config.provider_type === 'foundry' ? "http://localhost:5000/v1" :
+                                                                "https://api.openai.com/v1"
+                                                }
                                             />
                                         </div>
 
@@ -490,10 +518,17 @@ function App() {
                                                 </datalist>
                                                 <button
                                                     onClick={async () => {
-                                                        addLog(`Fetching models from ${config.ollama_url}...`)
+                                                        const currentUrl =
+                                                            config.provider_type === 'lemonade' ? config.lemonade_url :
+                                                                config.provider_type === 'foundry' ? config.foundry_url :
+                                                                    config.ollama_url;
+
+                                                        addLog(`Fetching models from ${currentUrl}...`)
                                                         try {
                                                             // Temporarily save config to ensure backend uses correct credentials for fetch
                                                             await invoke('save_config', { key: 'ollama_url', value: config.ollama_url })
+                                                            await invoke('save_config', { key: 'lemonade_url', value: config.lemonade_url })
+                                                            await invoke('save_config', { key: 'foundry_url', value: config.foundry_url })
                                                             await invoke('save_config', { key: 'provider_type', value: config.provider_type })
                                                             await invoke('save_config', { key: 'api_key', value: config.api_key })
 
@@ -561,6 +596,8 @@ function App() {
                                         onClick={async () => {
                                             try {
                                                 await invoke('save_config', { key: 'ollama_url', value: config.ollama_url })
+                                                await invoke('save_config', { key: 'lemonade_url', value: config.lemonade_url })
+                                                await invoke('save_config', { key: 'foundry_url', value: config.foundry_url })
                                                 await invoke('save_config', { key: 'model_name', value: config.model_name })
                                                 await invoke('save_config', { key: 'sync_interval', value: config.sync_interval })
                                                 await invoke('save_config', { key: 'history_days', value: config.history_days })
