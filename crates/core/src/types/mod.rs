@@ -41,18 +41,21 @@ pub struct Attachment {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmailFact {
     pub email_id: i64,
-    pub email_type: EmailType,
-    pub project: ProjectInfo,
+    pub primary_type: PrimaryType,
+    pub intent: Intent,
+    pub client_or_project: ProjectInfo,
     pub sentiment: Sentiment,
     pub urgency: Urgency,
+    pub due_by: Option<DateTime<Utc>>,
+    pub needs_response: bool,
+    pub waiting_on: WaitingOn,
     pub summary: String,
     pub key_points: Vec<String>,
-    pub action_items: Vec<ActionItem>,
-    pub decisions: Vec<String>,
-    pub risks: Vec<String>,
-    pub deadlines: Vec<String>,
-    pub needs_response: bool,
-    pub suggested_labels: Vec<String>,
+    pub risks: Vec<Risk>,
+    pub issues: Vec<Issue>,
+    pub blockers: Vec<Blocker>,
+    pub open_questions: Vec<OpenQuestion>,
+    pub answered_questions: Vec<AnsweredQuestion>,
     pub confidence: f32,
     pub provenance: Provenance,
     pub created_at: DateTime<Utc>,
@@ -61,18 +64,23 @@ pub struct EmailFact {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum_macros::Display)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
-pub enum EmailType {
-    StatusUpdate,
-    Scheduling,
-    Question,
+pub enum PrimaryType {
+    Update,
     Request,
-    Approval,
-    Invoice,
-    Legal,
-    Sales,
-    Support,
-    Personal,
-    Other,
+    Decision,
+    Fyi,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum_macros::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum Intent {
+    Inform,
+    Ask,
+    Escalate,
+    Commit,
+    Clarify,
+    Resolve,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,11 +93,10 @@ pub struct ProjectInfo {
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum Sentiment {
-    VeryNegative,
-    Negative,
     Neutral,
     Positive,
-    VeryPositive,
+    Concerned,
+    Hostile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum_macros::Display)]
@@ -99,14 +106,67 @@ pub enum Urgency {
     Low,
     Medium,
     High,
-    Critical,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum_macros::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum WaitingOn {
+    Me,
+    Them,
+    ThirdParty,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, strum_macros::Display)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum Severity {
+    Low,
+    Medium,
+    High,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionItem {
+pub struct Risk {
+    pub title: String,
+    pub details: String,
     pub owner: Option<String>,
-    pub task: String,
-    pub due_date: Option<DateTime<Utc>>,
+    pub severity: Severity,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Issue {
+    pub title: String,
+    pub details: String,
+    pub owner: Option<String>,
+    pub severity: Severity,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Blocker {
+    pub title: String,
+    pub details: String,
+    pub owner: Option<String>,
+    pub severity: Severity,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenQuestion {
+    pub question: String,
+    pub asked_by: Option<String>,
+    pub owner: Option<String>,
+    pub due_by: Option<DateTime<Utc>>,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnsweredQuestion {
+    pub question: String,
+    pub answer_summary: String,
     pub confidence: f32,
 }
 

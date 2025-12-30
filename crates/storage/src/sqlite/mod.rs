@@ -109,47 +109,69 @@ impl SqliteStorage {
     }
 
     pub async fn save_facts(&self, facts: &noodle_core::types::EmailFact) -> Result<()> {
-        let email_type = facts.email_type.to_string();
+        let primary_type = facts.primary_type.to_string();
+        let intent = facts.intent.to_string();
         let sentiment = facts.sentiment.to_string();
         let urgency = facts.urgency.to_string();
+        let waiting_on = facts.waiting_on.to_string();
 
-        let project_json = serde_json::to_string(&facts.project).unwrap();
+        let client_project = serde_json::to_string(&facts.client_or_project).unwrap();
         let key_points = serde_json::to_string(&facts.key_points).unwrap();
-        let action_items = serde_json::to_string(&facts.action_items).unwrap();
-        let decisions = serde_json::to_string(&facts.decisions).unwrap();
         let risks = serde_json::to_string(&facts.risks).unwrap();
-        let deadlines = serde_json::to_string(&facts.deadlines).unwrap();
-        let labels = serde_json::to_string(&facts.suggested_labels).unwrap();
+        let issues = serde_json::to_string(&facts.issues).unwrap();
+        let blockers = serde_json::to_string(&facts.blockers).unwrap();
+        let open_questions = serde_json::to_string(&facts.open_questions).unwrap();
+        let answered_questions = serde_json::to_string(&facts.answered_questions).unwrap();
+
         let provenance = serde_json::to_string(&facts.provenance).unwrap();
+
+        // Previous schema had 'deadlines_json', 'action_items_json', 'decisions_json', 'suggested_labels_json'.
+        // These are removed or re-mapped. We do NOT insert them.
 
         sqlx::query(
             r#"
             INSERT INTO extracted_email_facts (
-                email_id, email_type, project, sentiment, urgency, summary,
-                key_points_json, action_items_json, decisions_json, risks_json,
-                deadlines_json, needs_response, suggested_labels_json,
+                email_id, primary_type, intent, urgency, sentiment, client_or_project_json,
+                due_by, needs_response, waiting_on, summary, key_points_json,
+                risks_json, issues_json, blockers_json, open_questions_json, answered_questions_json,
                 confidence, provenance_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(email_id) DO UPDATE SET
-                sentiment = excluded.sentiment,
+                primary_type = excluded.primary_type,
+                intent = excluded.intent,
                 urgency = excluded.urgency,
+                sentiment = excluded.sentiment,
+                client_or_project_json = excluded.client_or_project_json,
+                due_by = excluded.due_by,
+                needs_response = excluded.needs_response,
+                waiting_on = excluded.waiting_on,
                 summary = excluded.summary,
-                confidence = excluded.confidence
+                key_points_json = excluded.key_points_json,
+                risks_json = excluded.risks_json,
+                issues_json = excluded.issues_json,
+                blockers_json = excluded.blockers_json,
+                open_questions_json = excluded.open_questions_json,
+                answered_questions_json = excluded.answered_questions_json,
+                confidence = excluded.confidence,
+                provenance_json = excluded.provenance_json
             "#,
         )
         .bind(facts.email_id)
-        .bind(email_type)
-        .bind(project_json)
-        .bind(sentiment)
+        .bind(primary_type)
+        .bind(intent)
         .bind(urgency)
+        .bind(sentiment)
+        .bind(client_project)
+        .bind(facts.due_by)
+        .bind(facts.needs_response)
+        .bind(waiting_on)
         .bind(&facts.summary)
         .bind(key_points)
-        .bind(action_items)
-        .bind(decisions)
         .bind(risks)
-        .bind(deadlines)
-        .bind(facts.needs_response)
-        .bind(labels)
+        .bind(issues)
+        .bind(blockers)
+        .bind(open_questions)
+        .bind(answered_questions)
         .bind(facts.confidence)
         .bind(provenance)
         .bind(facts.created_at)
@@ -188,7 +210,16 @@ impl SqliteStorage {
         let mut results = Vec::new();
         for id in ids {
             let email = sqlx::query(
-                "SELECT id, subject, sender, received_at, body_text FROM emails WHERE id = ?",
+                r#"
+                SELECT 
+                    e.id, e.subject, e.sender, e.received_at, e.body_text,
+                    f.primary_type, f.intent, f.urgency, f.sentiment, f.client_or_project_json,
+                    f.needs_response, f.waiting_on, f.due_by, f.risks_json, f.issues_json, f.blockers_json,
+                    f.summary
+                FROM emails e
+                LEFT JOIN extracted_email_facts f ON e.id = f.email_id
+                WHERE e.id = ?
+                "#,
             )
             .bind(id)
             .fetch_optional(&self.pool)
@@ -196,12 +227,30 @@ impl SqliteStorage {
             .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
 
             if let Some(row) = email {
+                let client_project: Option<serde_json::Value> = row
+                    .get::<Option<String>, _>("client_or_project_json")
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                let risks: Option<serde_json::Value> = row
+                    .get::<Option<String>, _>("risks_json")
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
                 results.push(serde_json::json!({
                     "id": row.get::<i64, _>("id"),
                     "subject": row.get::<String, _>("subject"),
                     "sender": row.get::<String, _>("sender"),
                     "received_at": row.get::<chrono::DateTime<chrono::Utc>, _>("received_at"),
-                    "body_text": row.get::<String, _>("body_text")
+                    "body_text": row.get::<String, _>("body_text"),
+                    "primary_type": row.get::<Option<String>, _>("primary_type"),
+                    "intent": row.get::<Option<String>, _>("intent"),
+                    "urgency": row.get::<Option<String>, _>("urgency"),
+                    "sentiment": row.get::<Option<String>, _>("sentiment"),
+                    "needs_response": row.get::<Option<bool>, _>("needs_response"),
+                    "waiting_on": row.get::<Option<String>, _>("waiting_on"),
+                    "due_by": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("due_by"),
+                    "summary": row.get::<Option<String>, _>("summary"),
+                    "client_or_project": client_project,
+                    "risks": risks
                 }));
             }
         }
@@ -210,7 +259,17 @@ impl SqliteStorage {
 
     pub async fn get_recent_emails(&self, limit: i64) -> Result<Vec<serde_json::Value>> {
         let rows = sqlx::query(
-            "SELECT id, subject, sender, received_at, body_text FROM emails ORDER BY received_at DESC LIMIT ?",
+            r#"
+            SELECT 
+                e.id, e.subject, e.sender, e.received_at, e.body_text,
+                f.primary_type, f.intent, f.urgency, f.sentiment, f.client_or_project_json,
+                f.needs_response, f.waiting_on, f.due_by, f.risks_json, f.issues_json, f.blockers_json,
+                f.summary
+            FROM emails e
+            LEFT JOIN extracted_email_facts f ON e.id = f.email_id
+            ORDER BY e.received_at DESC 
+            LIMIT ?
+            "#,
         )
         .bind(limit)
         .fetch_all(&self.pool)
@@ -220,12 +279,30 @@ impl SqliteStorage {
         Ok(rows
             .into_iter()
             .map(|row| {
+                let client_project: Option<serde_json::Value> = row
+                    .get::<Option<String>, _>("client_or_project_json")
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                let risks: Option<serde_json::Value> = row
+                    .get::<Option<String>, _>("risks_json")
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
                 serde_json::json!({
                     "id": row.get::<i64, _>("id"),
                     "subject": row.get::<String, _>("subject"),
                     "sender": row.get::<String, _>("sender"),
                     "received_at": row.get::<chrono::DateTime<chrono::Utc>, _>("received_at"),
-                    "body_text": row.get::<String, _>("body_text")
+                    "body_text": row.get::<String, _>("body_text"),
+                    "primary_type": row.get::<Option<String>, _>("primary_type"),
+                    "intent": row.get::<Option<String>, _>("intent"),
+                    "urgency": row.get::<Option<String>, _>("urgency"),
+                    "sentiment": row.get::<Option<String>, _>("sentiment"),
+                    "needs_response": row.get::<Option<bool>, _>("needs_response"),
+                    "waiting_on": row.get::<Option<String>, _>("waiting_on"),
+                    "due_by": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("due_by"),
+                    "summary": row.get::<Option<String>, _>("summary"),
+                    "client_or_project": client_project,
+                    "risks": risks
                 })
             })
             .collect())

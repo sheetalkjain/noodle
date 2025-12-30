@@ -4,7 +4,7 @@ use ai::provider::{AiProvider, ChatRequest, Message};
 use chrono::Utc;
 use noodle_core::error::Result;
 use noodle_core::types::{
-    ActionItem, Email, EmailFact, EmailType, ProjectInfo, Provenance, Sentiment, Urgency,
+    Email, EmailFact, Intent, PrimaryType, ProjectInfo, Provenance, Sentiment, Urgency, WaitingOn,
 };
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
@@ -67,21 +67,47 @@ impl ExtractionPipeline {
 
     async fn extract_facts(&self, email: &Email) -> Result<EmailFact> {
         let prompt = format!(
-            "Analyze the following email and extract key points, action items, sentiment, and urgency.
-Respond ONLY with a JSON object matching this schema:
+            "Analyze the following email and extract structured project health signals.
+You must assign the email to exactly one client_or_project.
+Classify the primary_type, intent, urgency, and sentiment carefully based on the rules.
+Extract risks, issues, blockers, and questions.
+
+Rules:
+- primary_type: 'update' (status/progress), 'request' (action required), 'decision' (announcement/approval), 'fyi' (informational).
+- intent: 'inform', 'ask', 'escalate', 'commit', 'clarify', 'resolve'.
+- urgency: 'low', 'medium', 'high'.
+- sentiment: 'neutral', 'positive', 'concerned', 'hostile'.
+- waiting_on: 'me', 'them', 'third_party', 'none'.
+- severity: 'low', 'medium', 'high'.
+- due_by: ISO8601 string or null.
+
+Respond ONLY with valid JSON matching this schema:
 {{
-  \"email_type\": \"status_update|scheduling|question|request|approval|invoice|legal|sales|support|personal|other\",
-  \"project\": {{ \"name\": \"string\", \"confidence\": 0.0-1.0 }},
-  \"sentiment\": \"very_negative|negative|neutral|positive|very_positive\",
-  \"urgency\": \"low|medium|high|critical\",
-  \"summary\": \"string\",
-  \"key_points\": [\"string\"],
-  \"action_items\": [\"string\"],
-  \"decisions\": [\"string\"],
-  \"risks\": [\"string\"],
-  \"deadlines\": [\"string\"],
+  \"primary_type\": \"update|request|decision|fyi\",
+  \"intent\": \"inform|ask|escalate|commit|clarify|resolve\",
+  \"urgency\": \"low|medium|high\",
+  \"due_by\": \"YYYY-MM-DDTHH:MM:SSZ\" or null,
+  \"sentiment\": \"neutral|positive|concerned|hostile\",
+  \"client_or_project\": {{ \"name\": \"string\", \"confidence\": 0.0-1.0 }},
+  \"risks\": [
+    {{ \"title\": \"string\", \"details\": \"string\", \"owner\": \"string|null\", \"severity\": \"low|medium|high\", \"confidence\": 0.0-1.0 }}
+  ],
+  \"issues\": [
+    {{ \"title\": \"string\", \"details\": \"string\", \"owner\": \"string|null\", \"severity\": \"low|medium|high\", \"confidence\": 0.0-1.0 }}
+  ],
+  \"blockers\": [
+    {{ \"title\": \"string\", \"details\": \"string\", \"owner\": \"string|null\", \"severity\": \"low|medium|high\", \"confidence\": 0.0-1.0 }}
+  ],
+  \"open_questions\": [
+    {{ \"question\": \"string\", \"asked_by\": \"string|null\", \"owner\": \"string|null\", \"due_by\": \"YYYY-MM-DDTHH:MM:SSZ\" or null, \"confidence\": 0.0-1.0 }}
+  ],
+  \"answered_questions\": [
+    {{ \"question\": \"string\", \"answer_summary\": \"string\", \"confidence\": 0.0-1.0 }}
+  ],
   \"needs_response\": true|false,
-  \"suggested_labels\": [\"string\"],
+  \"waiting_on\": \"me|them|third_party|none\",
+  \"summary\": \"string (max 80 words)\",
+  \"key_points\": [\"string\"],
   \"confidence\": 0.0-1.0
 }}
 
@@ -102,78 +128,60 @@ Body: {}",
         };
 
         let ai = self.ai.read().await;
+        // Retry logic could be added here
         let response = ai.chat_completion(request).await?;
-        let fact_data: serde_json::Value = serde_json::from_str(&response.content)
-            .map_err(|e: serde_json::Error| noodle_core::error::NoodleError::AI(e.to_string()))?;
+
+        // Attempt to parse directly into EmailFact-compatible struct or generic Value then map
+        // We parse to Value first to handle defaults/errors gracefully
+        let fact_data: serde_json::Value =
+            serde_json::from_str(&response.content).map_err(|e: serde_json::Error| {
+                noodle_core::error::NoodleError::AI(format!(
+                    "JSON Parse Error: {} Content: {}",
+                    e, response.content
+                ))
+            })?;
+
+        // Helper to parse enums defaults
+        let primary_type = serde_json::from_value(fact_data["primary_type"].clone())
+            .unwrap_or(noodle_core::types::PrimaryType::Fyi);
+        let intent = serde_json::from_value(fact_data["intent"].clone())
+            .unwrap_or(noodle_core::types::Intent::Inform);
+        let urgency = serde_json::from_value(fact_data["urgency"].clone())
+            .unwrap_or(noodle_core::types::Urgency::Low);
+        let sentiment = serde_json::from_value(fact_data["sentiment"].clone())
+            .unwrap_or(noodle_core::types::Sentiment::Neutral);
+        let waiting_on = serde_json::from_value(fact_data["waiting_on"].clone())
+            .unwrap_or(noodle_core::types::WaitingOn::None);
+
+        let due_by_str = fact_data["due_by"].as_str();
+        let due_by = due_by_str.and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        });
 
         Ok(EmailFact {
             email_id: email.id,
-            email_type: serde_json::from_value(fact_data["email_type"].clone())
-                .unwrap_or(EmailType::Other),
-            project: serde_json::from_value(fact_data["project"].clone()).unwrap_or(ProjectInfo {
-                name: "Default".into(),
-                confidence: 1.0,
-            }),
-            sentiment: serde_json::from_value(fact_data["sentiment"].clone())
-                .unwrap_or(Sentiment::Neutral),
-            urgency: serde_json::from_value(fact_data["urgency"].clone())
-                .unwrap_or(Urgency::Medium),
-            summary: fact_data["summary"].as_str().unwrap_or("").into(),
-            key_points: fact_data["key_points"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            action_items: fact_data["action_items"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| {
-                            v.as_str().map(|s| ActionItem {
-                                owner: None,
-                                task: s.to_string(),
-                                due_date: None,
-                                confidence: 1.0,
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            decisions: fact_data["decisions"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            risks: fact_data["risks"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            deadlines: fact_data["deadlines"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            primary_type,
+            intent,
+            client_or_project: serde_json::from_value(fact_data["client_or_project"].clone())
+                .unwrap_or(ProjectInfo {
+                    name: "Unknown".into(),
+                    confidence: 0.0,
+                }),
+            sentiment,
+            urgency,
+            due_by,
             needs_response: fact_data["needs_response"].as_bool().unwrap_or(false),
-            suggested_labels: fact_data["suggested_labels"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
+            waiting_on,
+            summary: fact_data["summary"].as_str().unwrap_or("").into(),
+            key_points: serde_json::from_value(fact_data["key_points"].clone()).unwrap_or_default(),
+            risks: serde_json::from_value(fact_data["risks"].clone()).unwrap_or_default(),
+            issues: serde_json::from_value(fact_data["issues"].clone()).unwrap_or_default(),
+            blockers: serde_json::from_value(fact_data["blockers"].clone()).unwrap_or_default(),
+            open_questions: serde_json::from_value(fact_data["open_questions"].clone())
+                .unwrap_or_default(),
+            answered_questions: serde_json::from_value(fact_data["answered_questions"].clone())
                 .unwrap_or_default(),
             confidence: fact_data["confidence"].as_f64().unwrap_or(0.0) as f32,
             provenance: Provenance {

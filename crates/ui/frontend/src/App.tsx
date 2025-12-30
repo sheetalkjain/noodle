@@ -372,18 +372,61 @@ function App() {
                                 </div>
                             ) : (
                                 emails.map((email) => (
-                                    <div key={email.id} className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 hover:border-zinc-700/80 transition-all cursor-pointer group shadow-sm hover:shadow-xl hover:shadow-black/50 hover:-translate-y-0.5">
-                                        <div className="flex justify-between items-start mb-3">
-                                            <h3 className="font-semibold text-lg text-zinc-200 group-hover:text-blue-400 transition-colors">{email.subject}</h3>
-                                            <span className="text-xs font-mono text-zinc-500 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">{new Date(email.received_at).toLocaleDateString()}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[10px] uppercase font-bold text-white shadow-inner">
-                                                {email.sender.substring(0, 2)}
+                                    <div key={email.id} className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/80 hover:border-zinc-700/80 transition-all cursor-pointer group shadow-sm hover:shadow-xl hover:shadow-black/50 hover:-translate-y-0.5 space-y-3">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1 mr-4">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    {email.client_or_project?.name && (
+                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
+                                                            {email.client_or_project.name}
+                                                        </span>
+                                                    )}
+                                                    {email.needs_response && (
+                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 animate-pulse">
+                                                            Action Required
+                                                        </span>
+                                                    )}
+                                                    {email.urgency?.toLowerCase() === 'high' && (
+                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
+                                                            High Urgency
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <h3 className="font-semibold text-lg text-zinc-200 group-hover:text-blue-400 transition-colors leading-tight">
+                                                    {email.subject}
+                                                </h3>
                                             </div>
-                                            <span className="text-xs text-zinc-400">{email.sender}</span>
+                                            <span className="text-xs font-mono text-zinc-500 bg-zinc-950 px-2 py-1 rounded border border-zinc-800 whitespace-nowrap">
+                                                {new Date(email.received_at).toLocaleDateString()}
+                                            </span>
                                         </div>
-                                        <p className="text-sm text-zinc-400 line-clamp-2 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">{email.body_text}</p>
+
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-[10px] uppercase font-bold text-white shadow-inner">
+                                                    {email.sender.substring(0, 2)}
+                                                </div>
+                                                <span className="text-xs text-zinc-400">{email.sender}</span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {email.primary_type && (
+                                                    <span className="text-[10px] uppercase text-zinc-500 font-medium">
+                                                        {email.primary_type}
+                                                    </span>
+                                                )}
+                                                {email.risks?.length > 0 && (
+                                                    <span className="flex items-center gap-1 text-[10px] text-red-400 bg-red-400/5 px-2 py-0.5 rounded-full border border-red-400/10">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                                                        {email.risks.length} Risk{email.risks.length > 1 ? 's' : ''}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <p className="text-sm text-zinc-400 line-clamp-2 leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">
+                                            {email.summary || email.body_text}
+                                        </p>
                                     </div>
                                 ))
                             )}
