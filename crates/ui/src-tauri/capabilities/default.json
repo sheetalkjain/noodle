@@ -12,20 +12,6 @@
         "core:app:default",
         "core:resources:default",
         "core:path:default",
-        "noodle-ui:allow-search-emails",
-        "noodle-ui:allow-get-stats",
-        "noodle-ui:allow-get-graph",
-        "noodle-ui:allow-start-sync",
-        "noodle-ui:allow-get-logs",
-        "noodle-ui:allow-get-config",
-        "noodle-ui:allow-save-config",
-        "noodle-ui:allow-save-log-cmd",
-        "noodle-ui:allow-get-email",
-        "noodle-ui:allow-list-prompts",
-        "noodle-ui:allow-save-prompt",
-        "noodle-ui:allow-draft-reply",
-        "noodle-ui:allow-get-models",
-        "noodle-ui:allow-force-exit",
-        "noodle-ui:allow-request-exit"
+        "noodle-ui:default"
     ]
 }

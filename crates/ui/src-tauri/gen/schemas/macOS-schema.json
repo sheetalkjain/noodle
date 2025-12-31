@@ -177,6 +177,102 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Default permissions for noodle-ui\n#### This default permission set includes:\n\n- `allow-search-emails`\n- `allow-get-stats`\n- `allow-get-graph`\n- `allow-start-sync`\n- `allow-get-logs`\n- `allow-get-config`\n- `allow-save-config`\n- `allow-save-log-cmd`\n- `allow-get-email`\n- `allow-list-prompts`\n- `allow-save-prompt`\n- `allow-draft-reply`\n- `allow-get-models`\n- `allow-force-exit`\n- `allow-request-exit`",
+          "type": "string",
+          "const": "default",
+          "markdownDescription": "Default permissions for noodle-ui\n#### This default permission set includes:\n\n- `allow-search-emails`\n- `allow-get-stats`\n- `allow-get-graph`\n- `allow-start-sync`\n- `allow-get-logs`\n- `allow-get-config`\n- `allow-save-config`\n- `allow-save-log-cmd`\n- `allow-get-email`\n- `allow-list-prompts`\n- `allow-save-prompt`\n- `allow-draft-reply`\n- `allow-get-models`\n- `allow-force-exit`\n- `allow-request-exit`"
+        },
+        {
+          "description": "Enables the draft_reply command",
+          "type": "string",
+          "const": "allow-draft-reply",
+          "markdownDescription": "Enables the draft_reply command"
+        },
+        {
+          "description": "Enables the force_exit command",
+          "type": "string",
+          "const": "allow-force-exit",
+          "markdownDescription": "Enables the force_exit command"
+        },
+        {
+          "description": "Enables the get_config command",
+          "type": "string",
+          "const": "allow-get-config",
+          "markdownDescription": "Enables the get_config command"
+        },
+        {
+          "description": "Enables the get_email command",
+          "type": "string",
+          "const": "allow-get-email",
+          "markdownDescription": "Enables the get_email command"
+        },
+        {
+          "description": "Enables the get_graph command",
+          "type": "string",
+          "const": "allow-get-graph",
+          "markdownDescription": "Enables the get_graph command"
+        },
+        {
+          "description": "Enables the get_logs command",
+          "type": "string",
+          "const": "allow-get-logs",
+          "markdownDescription": "Enables the get_logs command"
+        },
+        {
+          "description": "Enables the get_models command",
+          "type": "string",
+          "const": "allow-get-models",
+          "markdownDescription": "Enables the get_models command"
+        },
+        {
+          "description": "Enables the get_stats command",
+          "type": "string",
+          "const": "allow-get-stats",
+          "markdownDescription": "Enables the get_stats command"
+        },
+        {
+          "description": "Enables the list_prompts command",
+          "type": "string",
+          "const": "allow-list-prompts",
+          "markdownDescription": "Enables the list_prompts command"
+        },
+        {
+          "description": "Enables the request_exit command",
+          "type": "string",
+          "const": "allow-request-exit",
+          "markdownDescription": "Enables the request_exit command"
+        },
+        {
+          "description": "Enables the save_config command",
+          "type": "string",
+          "const": "allow-save-config",
+          "markdownDescription": "Enables the save_config command"
+        },
+        {
+          "description": "Enables the save_log_cmd command",
+          "type": "string",
+          "const": "allow-save-log-cmd",
+          "markdownDescription": "Enables the save_log_cmd command"
+        },
+        {
+          "description": "Enables the save_prompt command",
+          "type": "string",
+          "const": "allow-save-prompt",
+          "markdownDescription": "Enables the save_prompt command"
+        },
+        {
+          "description": "Enables the search_emails command",
+          "type": "string",
+          "const": "allow-search-emails",
+          "markdownDescription": "Enables the search_emails command"
+        },
+        {
+          "description": "Enables the start_sync command",
+          "type": "string",
+          "const": "allow-start-sync",
+          "markdownDescription": "Enables the start_sync command"
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

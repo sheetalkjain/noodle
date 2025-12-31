@@ -72,3 +72,24 @@ commands.allow = ["force_exit"]
 identifier = "allow-request-exit"
 description = "Enables the request_exit command"
 commands.allow = ["request_exit"]
+
+[permission-set]
+identifier = "default"
+description = "Default permissions for noodle-ui"
+permissions = [
+    "allow-search-emails",
+    "allow-get-stats",
+    "allow-get-graph",
+    "allow-start-sync",
+    "allow-get-logs",
+    "allow-get-config",
+    "allow-save-config",
+    "allow-save-log-cmd",
+    "allow-get-email",
+    "allow-list-prompts",
+    "allow-save-prompt",
+    "allow-draft-reply",
+    "allow-get-models",
+    "allow-force-exit",
+    "allow-request-exit"
+]
