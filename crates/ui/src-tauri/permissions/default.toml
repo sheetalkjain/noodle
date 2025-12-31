@@ -68,12 +68,13 @@ identifier = "allow-force-exit"
 description = "Enables the force_exit command"
 commands.allow = ["force_exit"]
 
+
 [[permission]]
 identifier = "allow-request-exit"
 description = "Enables the request_exit command"
 commands.allow = ["request_exit"]
 
-[permission-set]
+[[permission-set]]
 identifier = "default"
 description = "Default permissions for noodle-ui"
 permissions = [
@@ -93,3 +94,4 @@ permissions = [
     "allow-force-exit",
     "allow-request-exit"
 ]
+
