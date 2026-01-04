@@ -384,4 +384,86 @@ impl SqliteStorage {
 
         Ok(row.map(|r| r.get("value")))
     }
+
+    /// Save or retrieve an entity by its normalized key.
+    /// Returns the entity ID (existing or newly created).
+    pub async fn save_entity(&self, entity_type: &str, canonical_name: &str) -> Result<i64> {
+        // Normalize the key: lowercase, trim whitespace
+        let normalized_key = canonical_name.trim().to_lowercase();
+
+        // Try to find existing entity
+        let existing = sqlx::query("SELECT id FROM entities WHERE normalized_key = ?")
+            .bind(&normalized_key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        if let Some(row) = existing {
+            return Ok(row.get("id"));
+        }
+
+        // Create new entity
+        let row = sqlx::query(
+            "INSERT INTO entities (entity_type, canonical_name, normalized_key, created_at) VALUES (?, ?, ?, ?) RETURNING id"
+        )
+        .bind(entity_type)
+        .bind(canonical_name.trim())
+        .bind(&normalized_key)
+        .bind(Utc::now())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(row.get("id"))
+    }
+
+    /// Create a relationship edge between two entities for a specific email.
+    pub async fn save_edge(
+        &self,
+        src_entity_id: i64,
+        dst_entity_id: i64,
+        edge_type: &str,
+        email_id: i64,
+    ) -> Result<()> {
+        // Skip self-referential edges
+        if src_entity_id == dst_entity_id {
+            return Ok(());
+        }
+
+        sqlx::query(
+            "INSERT OR IGNORE INTO edges (src_entity_id, dst_entity_id, edge_type, email_id, created_at) VALUES (?, ?, ?, ?, ?)"
+        )
+        .bind(src_entity_id)
+        .bind(dst_entity_id)
+        .bind(edge_type)
+        .bind(email_id)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Link an entity to an email with a specific role.
+    pub async fn save_entity_mention(
+        &self,
+        email_id: i64,
+        entity_id: i64,
+        role: &str,
+        confidence: f32,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO entity_mentions (email_id, entity_id, role, confidence) VALUES (?, ?, ?, ?)"
+        )
+        .bind(email_id)
+        .bind(entity_id)
+        .bind(role)
+        .bind(confidence)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(())
+    }
 }

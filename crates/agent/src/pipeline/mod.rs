@@ -51,17 +51,68 @@ impl ExtractionPipeline {
         // 3. Save facts to SQLite
         self.sqlite.save_facts(&facts).await?;
 
-        // 4. Generate embeddings
+        // 4. Extract and save entities from email headers
+        self.extract_and_save_entities(&email).await?;
+
+        // 5. Generate embeddings
         let ai = self.ai.read().await;
         let embedding = ai.generate_embedding(&email.body_text).await?;
 
-        // 5. Persist to Qdrant
+        // 6. Persist to Qdrant
         let payload = qdrant_client::Payload::new(); // Add metadata
         self.qdrant
             .upsert_email_vector(&email.store_id, &email.entry_id, embedding, payload)
             .await?;
 
         info!("Successfully processed email: {}", email.id);
+        Ok(())
+    }
+
+    /// Extract entities from email headers and save them with relationships.
+    async fn extract_and_save_entities(&self, email: &Email) -> Result<()> {
+        // Extract sender entity
+        let sender_id = self.sqlite.save_entity("person", &email.sender).await?;
+        self.sqlite
+            .save_entity_mention(email.id, sender_id, "sender", 1.0)
+            .await?;
+
+        // Parse and save 'to' recipients
+        let to_recipients: Vec<&str> = email
+            .to
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        for recipient in &to_recipients {
+            let recipient_id = self.sqlite.save_entity("person", recipient).await?;
+            self.sqlite
+                .save_entity_mention(email.id, recipient_id, "recipient", 1.0)
+                .await?;
+            // Create edge from sender to recipient
+            self.sqlite
+                .save_edge(sender_id, recipient_id, "sent_to", email.id)
+                .await?;
+        }
+
+        // Parse and save 'cc' recipients if present
+        if let Some(cc) = &email.cc {
+            let cc_recipients: Vec<&str> = cc
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            for recipient in &cc_recipients {
+                let recipient_id = self.sqlite.save_entity("person", recipient).await?;
+                self.sqlite
+                    .save_entity_mention(email.id, recipient_id, "cc", 1.0)
+                    .await?;
+                // Create edge from sender to cc recipient
+                self.sqlite
+                    .save_edge(sender_id, recipient_id, "cc", email.id)
+                    .await?;
+            }
+        }
+
         Ok(())
     }
 
