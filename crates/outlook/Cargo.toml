@@ -7,9 +7,13 @@ edition = "2021"
 noodle-core = { path = "../core" }
 storage = { path = "../storage" }
 serde = { workspace = true }
-windows = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
