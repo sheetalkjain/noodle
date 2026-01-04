@@ -3,23 +3,11 @@
 use chrono::{DateTime, Utc};
 use noodle_core::error::{NoodleError, Result};
 use noodle_core::types::Email;
-use serde::Deserialize;
 use std::process::Command;
 use tracing::{error, info};
 
 #[derive(Clone)]
 pub struct MacOutlookClient;
-
-#[derive(Debug, Deserialize)]
-struct AppleScriptEmail {
-    id: String,
-    subject: String,
-    sender: String,
-    to_recipients: String,
-    cc_recipients: Option<String>,
-    body: String,
-    received_time: String,
-}
 
 impl MacOutlookClient {
     pub fn new() -> Result<Self> {
@@ -52,23 +40,16 @@ impl MacOutlookClient {
     ) -> Result<Vec<Email>> {
         info!("Starting macOS Outlook sync for folder: {}", folder_name);
 
-        let folder_script_name = match folder_name {
-            "Inbox" => "inbox",
-            "Sent Items" => "sent mail",
-            _ => "inbox",
-        };
-
         // AppleScript to fetch emails from Outlook for Mac
-        // Using a simpler approach with tab-separated values instead of JSON to avoid escaping issues
+        // Using tab-separated values to avoid JSON escaping issues
         let script = format!(
-            r#"
-set emailList to ""
+            r#"set emailList to ""
 set cutoffDate to (current date) - ({days} * days)
 set lf to ASCII character 10
 set tb to ASCII character 9
 
 tell application "Microsoft Outlook"
-    set theFolder to {folder}
+    set theFolder to mail folder "{folder_name}"
     set theMessages to messages of theFolder whose time received > cutoffDate
     
     repeat with msg in theMessages
@@ -135,21 +116,19 @@ tell application "Microsoft Outlook"
             if theMins < 10 then set recvTimeStr to recvTimeStr & "0"
             set recvTimeStr to recvTimeStr & (theMins as string) & ":00Z"
             
-            -- Build tab-separated line: id, subject, sender, to, cc, body, time
             set emailLine to msgId & tb & msgSubject & tb & senderAddr & tb & toRecips & tb & ccRecips & tb & msgBody & tb & recvTimeStr
             
             if emailList is not "" then set emailList to emailList & lf
             set emailList to emailList & emailLine
         on error errMsg
-            -- Skip problematic emails
+            log errMsg
         end try
     end repeat
 end tell
 
-return emailList
-"#,
+return emailList"#,
             days = days,
-            folder = folder_script_name
+            folder_name = folder_name
         );
 
         let output = Command::new("osascript")
