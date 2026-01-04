@@ -1,6 +1,6 @@
 // macOS-specific Outlook client using AppleScript
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use noodle_core::error::{NoodleError, Result};
 use noodle_core::types::Email;
 use serde::Deserialize;
@@ -59,13 +59,16 @@ impl MacOutlookClient {
         };
 
         // AppleScript to fetch emails from Outlook for Mac
+        // Using a simpler approach with tab-separated values instead of JSON to avoid escaping issues
         let script = format!(
             r#"
 set emailList to ""
-set cutoffDate to (current date) - ({} * days)
+set cutoffDate to (current date) - ({days} * days)
+set lf to ASCII character 10
+set tb to ASCII character 9
 
 tell application "Microsoft Outlook"
-    set theFolder to {}
+    set theFolder to {folder}
     set theMessages to messages of theFolder whose time received > cutoffDate
     
     repeat with msg in theMessages
@@ -119,68 +122,34 @@ tell application "Microsoft Outlook"
             
             set recvTime to time received of msg
             set recvTimeStr to (year of recvTime as string) & "-"
-            set m to (month of recvTime as integer)
-            if m < 10 then set recvTimeStr to recvTimeStr & "0"
-            set recvTimeStr to recvTimeStr & (m as string) & "-"
-            set d to (day of recvTime as integer)
-            if d < 10 then set recvTimeStr to recvTimeStr & "0"
-            set recvTimeStr to recvTimeStr & (d as string) & "T"
-            set h to (hours of recvTime as integer)
-            if h < 10 then set recvTimeStr to recvTimeStr & "0"
-            set recvTimeStr to recvTimeStr & (h as string) & ":"
-            set mins to (minutes of recvTime as integer)
-            if mins < 10 then set recvTimeStr to recvTimeStr & "0"
-            set recvTimeStr to recvTimeStr & (mins as string) & ":00Z"
+            set theMonth to (month of recvTime as integer)
+            if theMonth < 10 then set recvTimeStr to recvTimeStr & "0"
+            set recvTimeStr to recvTimeStr & (theMonth as string) & "-"
+            set theDay to (day of recvTime as integer)
+            if theDay < 10 then set recvTimeStr to recvTimeStr & "0"
+            set recvTimeStr to recvTimeStr & (theDay as string) & "T"
+            set theHours to (hours of recvTime as integer)
+            if theHours < 10 then set recvTimeStr to recvTimeStr & "0"
+            set recvTimeStr to recvTimeStr & (theHours as string) & ":"
+            set theMins to (minutes of recvTime as integer)
+            if theMins < 10 then set recvTimeStr to recvTimeStr & "0"
+            set recvTimeStr to recvTimeStr & (theMins as string) & ":00Z"
             
-            -- Escape special characters for JSON
-            set msgSubject to my escapeForJson(msgSubject)
-            set senderAddr to my escapeForJson(senderAddr)
-            set toRecips to my escapeForJson(toRecips)
-            set ccRecips to my escapeForJson(ccRecips)
-            set msgBody to my escapeForJson(msgBody)
+            -- Build tab-separated line: id, subject, sender, to, cc, body, time
+            set emailLine to msgId & tb & msgSubject & tb & senderAddr & tb & toRecips & tb & ccRecips & tb & msgBody & tb & recvTimeStr
             
-            set emailJson to "{{"
-            set emailJson to emailJson & "\"id\":\"" & msgId & "\","
-            set emailJson to emailJson & "\"subject\":\"" & msgSubject & "\","
-            set emailJson to emailJson & "\"sender\":\"" & senderAddr & "\","
-            set emailJson to emailJson & "\"to_recipients\":\"" & toRecips & "\","
-            set emailJson to emailJson & "\"cc_recipients\":\"" & ccRecips & "\","
-            set emailJson to emailJson & "\"body\":\"" & msgBody & "\","
-            set emailJson to emailJson & "\"received_time\":\"" & recvTimeStr & "\""
-            set emailJson to emailJson & "}}"
-            
-            if emailList is not "" then set emailList to emailList & ","
-            set emailList to emailList & emailJson
+            if emailList is not "" then set emailList to emailList & lf
+            set emailList to emailList & emailLine
         on error errMsg
             -- Skip problematic emails
         end try
     end repeat
 end tell
 
-return "[" & emailList & "]"
-
-on escapeForJson(theText)
-    set escaped to ""
-    repeat with c in theText
-        set c to c as string
-        if c is "\"" then
-            set escaped to escaped & "\\\""
-        else if c is "\\" then
-            set escaped to escaped & "\\\\"
-        else if c is (ASCII character 10) then
-            set escaped to escaped & "\\n"
-        else if c is (ASCII character 13) then
-            set escaped to escaped & "\\n"
-        else if c is (ASCII character 9) then
-            set escaped to escaped & "\\t"
-        else
-            set escaped to escaped & c
-        end if
-    end repeat
-    return escaped
-end escapeForJson
+return emailList
 "#,
-            days, folder_script_name
+            days = days,
+            folder = folder_script_name
         );
 
         let output = Command::new("osascript")
@@ -198,55 +167,56 @@ end escapeForJson
             )));
         }
 
-        let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let tsv_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
         info!(
             "Received {} bytes of email data from Outlook",
-            json_str.len()
+            tsv_str.len()
         );
 
-        if json_str.is_empty() || json_str == "[]" {
+        if tsv_str.is_empty() {
             info!("No emails found in {}", folder_name);
             return Ok(vec![]);
         }
 
-        let parsed: Vec<AppleScriptEmail> = serde_json::from_str(&json_str).map_err(|e| {
-            error!(
-                "Failed to parse AppleScript output: {} - Data: {}",
-                e,
-                &json_str[..json_str.len().min(500)]
-            );
-            NoodleError::Outlook(format!("Failed to parse email data: {}", e))
-        })?;
+        // Parse tab-separated values
+        let emails: Vec<Email> = tsv_str
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 7 {
+                    let received_at = DateTime::parse_from_rfc3339(parts[6])
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now());
 
-        let emails: Vec<Email> = parsed
-            .into_iter()
-            .map(|ae| {
-                let received_at = DateTime::parse_from_rfc3339(&ae.received_time)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
-
-                Email {
-                    id: 0,
-                    store_id: "outlook-mac".into(),
-                    entry_id: ae.id,
-                    conversation_id: None,
-                    folder: folder_name.to_string(),
-                    subject: ae.subject,
-                    sender: ae.sender,
-                    to: ae.to_recipients,
-                    cc: ae.cc_recipients.filter(|s| !s.is_empty()),
-                    bcc: None,
-                    sent_at: received_at,
-                    received_at,
-                    body_text: ae.body,
-                    body_html: None,
-                    importance: 1,
-                    categories: None,
-                    flags: None,
-                    internet_message_id: None,
-                    last_indexed_at: Utc::now(),
-                    hash: "".into(),
-                    excluded_reason: None,
+                    Some(Email {
+                        id: 0,
+                        store_id: "outlook-mac".into(),
+                        entry_id: parts[0].to_string(),
+                        conversation_id: None,
+                        folder: folder_name.to_string(),
+                        subject: parts[1].to_string(),
+                        sender: parts[2].to_string(),
+                        to: parts[3].to_string(),
+                        cc: if parts[4].is_empty() {
+                            None
+                        } else {
+                            Some(parts[4].to_string())
+                        },
+                        bcc: None,
+                        sent_at: received_at,
+                        received_at,
+                        body_text: parts[5].to_string(),
+                        body_html: None,
+                        importance: 1,
+                        categories: None,
+                        flags: None,
+                        internet_message_id: None,
+                        last_indexed_at: Utc::now(),
+                        hash: "".into(),
+                        excluded_reason: None,
+                    })
+                } else {
+                    None
                 }
             })
             .collect();
