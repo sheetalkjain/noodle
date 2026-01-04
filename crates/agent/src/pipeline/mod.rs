@@ -70,8 +70,18 @@ impl ExtractionPipeline {
 
     /// Extract entities from email headers and save them with relationships.
     async fn extract_and_save_entities(&self, email: &Email) -> Result<()> {
+        info!(
+            "Extracting entities for email {}: sender='{}', to='{}'",
+            email.id, email.sender, email.to
+        );
+
         // Extract sender entity
         let sender_id = self.sqlite.save_entity("person", &email.sender).await?;
+        info!(
+            "Created/found sender entity: id={}, name='{}'",
+            sender_id, email.sender
+        );
+
         self.sqlite
             .save_entity_mention(email.id, sender_id, "sender", 1.0)
             .await?;
@@ -83,8 +93,16 @@ impl ExtractionPipeline {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
+
+        info!("Processing {} 'to' recipients", to_recipients.len());
+
         for recipient in &to_recipients {
             let recipient_id = self.sqlite.save_entity("person", recipient).await?;
+            info!(
+                "Created/found recipient entity: id={}, name='{}'",
+                recipient_id, recipient
+            );
+
             self.sqlite
                 .save_entity_mention(email.id, recipient_id, "recipient", 1.0)
                 .await?;
@@ -92,6 +110,7 @@ impl ExtractionPipeline {
             self.sqlite
                 .save_edge(sender_id, recipient_id, "sent_to", email.id)
                 .await?;
+            info!("Created edge: {} -> {} (sent_to)", sender_id, recipient_id);
         }
 
         // Parse and save 'cc' recipients if present
@@ -101,6 +120,9 @@ impl ExtractionPipeline {
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
                 .collect();
+
+            info!("Processing {} 'cc' recipients", cc_recipients.len());
+
             for recipient in &cc_recipients {
                 let recipient_id = self.sqlite.save_entity("person", recipient).await?;
                 self.sqlite
@@ -110,9 +132,11 @@ impl ExtractionPipeline {
                 self.sqlite
                     .save_edge(sender_id, recipient_id, "cc", email.id)
                     .await?;
+                info!("Created cc edge: {} -> {} (cc)", sender_id, recipient_id);
             }
         }
 
+        info!("Entity extraction completed for email {}", email.id);
         Ok(())
     }
 

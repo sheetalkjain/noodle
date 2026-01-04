@@ -4,7 +4,8 @@ use outlook::client::OutlookClient;
 use std::sync::Arc;
 use storage::sqlite::SqliteStorage;
 use tokio::time::{interval, Duration};
-use tracing::{error, info};
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info, warn};
 
 pub struct SyncManager {
     pipeline: Arc<ExtractionPipeline>,
@@ -14,6 +15,7 @@ pub struct SyncManager {
     app_handle: tauri::AppHandle,
     history_days: i64,
     sync_interval_mins: i64,
+    cancel_token: CancellationToken,
 }
 
 impl SyncManager {
@@ -32,7 +34,20 @@ impl SyncManager {
             app_handle,
             history_days,
             sync_interval_mins,
+            cancel_token: CancellationToken::new(),
         }
+    }
+
+    /// Get a clone of the cancellation token for external use
+    pub fn get_cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
+    }
+
+    /// Cancel the sync operation
+    pub fn cancel(&self) {
+        info!("Sync cancellation requested");
+        self.log_to_ui("Sync cancelled by user", "warn");
+        self.cancel_token.cancel();
     }
 
     fn log_to_ui(&self, message: &str, level: &str) {
@@ -58,27 +73,60 @@ impl SyncManager {
         info!("Starting background sync manager");
         self.log_to_ui("Sync manager started", "info");
 
-        // 1. Initial Scan (Last 30 days)
+        // 1. Initial Scan (Last N days)
         if let Err(e) = self.run_initial_scan().await {
+            if self.cancel_token.is_cancelled() {
+                info!("Initial scan cancelled");
+                return;
+            }
             error!("Initial scan failed: {}", e);
+        }
+
+        if self.cancel_token.is_cancelled() {
+            info!("Sync cancelled after initial scan");
+            return;
         }
 
         // 2. Periodic Delta Scan
         let mut interval = interval(Duration::from_secs(self.sync_interval_mins as u64 * 60));
         loop {
-            interval.tick().await;
-            info!("Running periodic delta scan...");
-            if let Err(e) = self.run_delta_scan().await {
-                error!("Delta scan failed: {}", e);
+            tokio::select! {
+                _ = self.cancel_token.cancelled() => {
+                    info!("Periodic sync cancelled");
+                    self.log_to_ui("Sync stopped", "info");
+                    break;
+                }
+                _ = interval.tick() => {
+                    info!("Running periodic delta scan...");
+                    if let Err(e) = self.run_delta_scan().await {
+                        if self.cancel_token.is_cancelled() {
+                            break;
+                        }
+                        error!("Delta scan failed: {}", e);
+                    }
+                }
             }
         }
     }
 
     async fn run_initial_scan(&self) -> Result<()> {
-        info!("Running initial 90-day sync for all folders...");
+        info!(
+            "Running initial {}-day sync for all folders...",
+            self.history_days
+        );
+        self.log_to_ui(
+            &format!("Starting {} day email sync...", self.history_days),
+            "info",
+        );
+
         let folders = [(6, "Inbox"), (5, "Sent Items")];
 
         for (folder_id, folder_name) in folders {
+            if self.cancel_token.is_cancelled() {
+                warn!("Sync cancelled during folder iteration");
+                return Ok(());
+            }
+
             info!("Processing folder: {}", folder_name);
             self.log_to_ui(&format!("Fetching emails from {}...", folder_name), "info");
             let emails = match self
@@ -94,16 +142,20 @@ impl SyncManager {
                 }
             };
 
-            info!("Found {} emails in {}", emails.len(), folder_name);
+            let total = emails.len();
+            info!("Found {} emails in {}", total, folder_name);
             self.log_to_ui(
-                &format!(
-                    "Found {} emails in {}. Processing...",
-                    emails.len(),
-                    folder_name
-                ),
+                &format!("Found {} emails in {}. Processing...", total, folder_name),
                 "info",
             );
-            for email in emails {
+
+            for (idx, email) in emails.into_iter().enumerate() {
+                if self.cancel_token.is_cancelled() {
+                    warn!("Sync cancelled during email processing");
+                    self.log_to_ui("Sync cancelled", "warn");
+                    return Ok(());
+                }
+
                 let subject = email.subject.clone();
                 if let Err(e) = self.pipeline.process_email(email).await {
                     error!(
@@ -111,6 +163,19 @@ impl SyncManager {
                         subject, folder_name, e
                     );
                     self.log_to_ui(&format!("Skipped '{}': {}", subject, e), "warn");
+                }
+
+                // Log progress every 10 emails
+                if (idx + 1) % 10 == 0 || idx + 1 == total {
+                    self.log_to_ui(
+                        &format!(
+                            "Processed {}/{} emails from {}",
+                            idx + 1,
+                            total,
+                            folder_name
+                        ),
+                        "info",
+                    );
                 }
             }
         }
@@ -125,6 +190,10 @@ impl SyncManager {
         let folders = [(6, "Inbox"), (5, "Sent Items")];
 
         for (folder_id, folder_name) in folders {
+            if self.cancel_token.is_cancelled() {
+                return Ok(());
+            }
+
             let emails = match self
                 .outlook
                 .get_emails_last_n_days(1, folder_id, folder_name)
@@ -138,6 +207,10 @@ impl SyncManager {
             };
 
             for email in emails {
+                if self.cancel_token.is_cancelled() {
+                    return Ok(());
+                }
+
                 let subject = email.subject.clone();
                 if let Err(e) = self.pipeline.process_email(email).await {
                     error!(

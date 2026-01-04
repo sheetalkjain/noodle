@@ -9,6 +9,7 @@ storage = { path = "../storage" }
 outlook = { path = "../outlook" }
 ai = { path = "../ai" }
 tokio = { workspace = true }
+tokio-util = "0.7"
 tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
@@ -20,3 +21,4 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 sqlx = { workspace = true }
 tauri = { workspace = true }
+

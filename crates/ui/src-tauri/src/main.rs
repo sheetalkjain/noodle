@@ -9,6 +9,7 @@ use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
 use tauri::{command, Emitter, Manager, State};
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 struct AppState {
@@ -18,6 +19,7 @@ struct AppState {
     pipeline: Arc<ExtractionPipeline>,
     outlook: Arc<OutlookClient>,
     app_handle: tauri::AppHandle,
+    sync_cancel_token: Arc<RwLock<Option<CancellationToken>>>,
 }
 
 #[command]
@@ -94,6 +96,14 @@ async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
         }),
     );
 
+    // Cancel any existing sync first
+    {
+        let existing_token = state.sync_cancel_token.read().await;
+        if let Some(token) = existing_token.as_ref() {
+            token.cancel();
+        }
+    }
+
     let history_days = state
         .sqlite
         .get_config("history_days")
@@ -119,11 +129,37 @@ async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
         sync_interval,
     ));
 
+    // Store the cancel token
+    let cancel_token = sync_manager.get_cancel_token();
+    {
+        let mut token_lock = state.sync_cancel_token.write().await;
+        *token_lock = Some(cancel_token);
+    }
+
     tokio::spawn(async move {
         sync_manager.start_background_sync().await;
     });
 
     Ok(())
+}
+
+#[command]
+async fn cancel_sync(state: State<'_, AppState>) -> Result<(), String> {
+    info!("Sync cancellation requested");
+    let token = state.sync_cancel_token.read().await;
+    if let Some(cancel_token) = token.as_ref() {
+        cancel_token.cancel();
+        let _ = state.app_handle.emit(
+            "noodle://log",
+            serde_json::json!({
+                "message": "Sync cancelled by user",
+                "level": "warn"
+            }),
+        );
+        Ok(())
+    } else {
+        Err("No sync in progress".to_string())
+    }
 }
 
 #[command]
@@ -497,6 +533,7 @@ fn main() {
                     pipeline,
                     outlook,
                     app_handle: app_handle.clone(),
+                    sync_cancel_token: Arc::new(RwLock::new(None)),
                 });
             });
 
@@ -513,6 +550,7 @@ fn main() {
             get_stats,
             get_graph,
             start_sync,
+            cancel_sync,
             get_email,
             list_prompts,
             save_prompt,

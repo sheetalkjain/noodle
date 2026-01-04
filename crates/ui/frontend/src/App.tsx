@@ -277,7 +277,23 @@ function App() {
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-end min-w-[200px]">
+                    <div className="flex items-center justify-end min-w-[200px] gap-2">
+                        {isLoading && (
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await invoke('cancel_sync')
+                                        addLog('Sync cancellation requested')
+                                        setIsLoading(false)
+                                    } catch (e: any) {
+                                        addLog(`Cancel failed: ${e}`, 'error')
+                                    }
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-sm font-medium transition-all active:scale-95"
+                            >
+                                <span>Cancel</span>
+                            </button>
+                        )}
                         <button
                             onClick={startSync}
                             disabled={isLoading}
