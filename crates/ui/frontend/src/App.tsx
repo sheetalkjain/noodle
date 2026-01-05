@@ -99,12 +99,27 @@ function App() {
     }
 
     // Handle sentiment chart click for drill-down
-    const handleSentimentDrillDown = (sentiment: string) => {
+    const handleSentimentDrillDown = async (sentiment: string) => {
+        console.log('Sentiment drill-down clicked:', sentiment, 'current filter:', sentimentFilter)
         if (sentiment === '' || sentiment === sentimentFilter) {
             setSentimentFilter(null)
         } else {
             setSentimentFilter(sentiment)
-            setActiveTab('emails')  // Switch to emails tab to show filtered results
+            setActiveTab('emails')
+            // Immediately fetch with the new filter to avoid useEffect timing issues
+            try {
+                console.log('Fetching emails with sentiment:', sentiment)
+                const results = await invoke('search_emails_filtered', {
+                    sentiment: sentiment,
+                    project: null,
+                    urgency: null,
+                    needs_response: null
+                })
+                console.log('Drill-down results:', results)
+                setEmails(results as any[])
+            } catch (error) {
+                console.error('Drill-down fetch failed:', error)
+            }
         }
     }
 
@@ -117,7 +132,7 @@ function App() {
     }
 
     // Check if any filters are active
-    const hasActiveFilters = sentimentFilter || projectFilter || urgencyFilter || needsResponseFilter !== null
+    const hasActiveFilters = !!(sentimentFilter || projectFilter || urgencyFilter || needsResponseFilter !== null)
 
     const fetchConfig = async () => {
         try {
