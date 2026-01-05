@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use noodle_core::error::{NoodleError, Result};
 use noodle_core::types::Email;
 use std::process::Command;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
 pub struct MacOutlookClient;
@@ -41,15 +41,35 @@ impl MacOutlookClient {
         info!("Starting macOS Outlook sync for folder: {}", folder_name);
 
         // AppleScript to fetch emails from Outlook for Mac
-        // Using tab-separated values to avoid JSON escaping issues
+        // We iterate through ALL mail folders to find the one with the matching name AND messages
+        // This handles the case where there are duplicate folder names (e.g., top-level empty "Inbox"
+        // vs account-level "Inbox" with actual emails)
         let script = format!(
             r#"set emailList to ""
 set cutoffDate to (current date) - ({days} * days)
 set lf to ASCII character 10
 set tb to ASCII character 9
+set targetFolderName to "{folder_name}"
+set theFolder to missing value
 
 tell application "Microsoft Outlook"
-    set theFolder to mail folder "{folder_name}"
+    -- Find the folder with matching name that has the most messages
+    set allFolders to every mail folder
+    set maxCount to 0
+    repeat with f in allFolders
+        if name of f is targetFolderName then
+            set msgCount to count of messages of f
+            if msgCount > maxCount then
+                set maxCount to msgCount
+                set theFolder to f
+            end if
+        end if
+    end repeat
+    
+    if theFolder is missing value then
+        return ""
+    end if
+    
     set theMessages to messages of theFolder whose time received > cutoffDate
     
     repeat with msg in theMessages
@@ -153,7 +173,7 @@ return emailList"#,
         );
 
         if tsv_str.is_empty() {
-            info!("No emails found in {}", folder_name);
+            warn!("No emails found in {} (or folder not found)", folder_name);
             return Ok(vec![]);
         }
 
