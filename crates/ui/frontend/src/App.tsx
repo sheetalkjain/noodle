@@ -124,6 +124,16 @@ function App() {
             setLogs(prev => [entry, ...prev].slice(0, 1000))
         })
 
+        // Listen for sync status changes to update UI
+        const unlistenSync = listen('noodle://sync_status', (event: any) => {
+            const { status } = event.payload
+            if (status === 'cancelled' || status === 'completed' || status === 'error') {
+                setIsLoading(false)
+            } else if (status === 'running') {
+                setIsLoading(true)
+            }
+        })
+
         const unlistenExit = listen('noodle://show-exit-confirm', () => {
             setShowExitConfirm(true)
         })
@@ -147,6 +157,7 @@ function App() {
 
         return () => {
             unlistenPromise.then(unlisten => unlisten())
+            unlistenSync.then(unlisten => unlisten())
             unlistenExit.then(unlisten => unlisten())
             window.removeEventListener('keydown', handleKeyDown)
         }

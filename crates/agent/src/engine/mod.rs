@@ -69,14 +69,24 @@ impl SyncManager {
         });
     }
 
+    fn emit_sync_status(&self, status: &str) {
+        use tauri::Emitter;
+        let _ = self.app_handle.emit(
+            "noodle://sync_status",
+            serde_json::json!({ "status": status }),
+        );
+    }
+
     pub async fn start_background_sync(self: Arc<Self>) {
         info!("Starting background sync manager");
         self.log_to_ui("Sync manager started", "info");
+        self.emit_sync_status("running");
 
         // 1. Initial Scan (Last N days)
         if let Err(e) = self.run_initial_scan().await {
             if self.cancel_token.is_cancelled() {
                 info!("Initial scan cancelled");
+                self.emit_sync_status("cancelled");
                 return;
             }
             error!("Initial scan failed: {}", e);
@@ -84,6 +94,7 @@ impl SyncManager {
 
         if self.cancel_token.is_cancelled() {
             info!("Sync cancelled after initial scan");
+            self.emit_sync_status("cancelled");
             return;
         }
 
@@ -94,6 +105,7 @@ impl SyncManager {
                 _ = self.cancel_token.cancelled() => {
                     info!("Periodic sync cancelled");
                     self.log_to_ui("Sync stopped", "info");
+                    self.emit_sync_status("cancelled");
                     break;
                 }
                 _ = interval.tick() => {
