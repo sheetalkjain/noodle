@@ -183,6 +183,12 @@
           "markdownDescription": "Default permissions for noodle-ui\n#### This default permission set includes:\n\n- `allow-search-emails`\n- `allow-get-stats`\n- `allow-get-graph`\n- `allow-start-sync`\n- `allow-get-logs`\n- `allow-get-config`\n- `allow-save-config`\n- `allow-save-log-cmd`\n- `allow-get-email`\n- `allow-list-prompts`\n- `allow-save-prompt`\n- `allow-draft-reply`\n- `allow-get-models`\n- `allow-force-exit`\n- `allow-request-exit`"
         },
         {
+          "description": "Enables the cancel_sync command",
+          "type": "string",
+          "const": "allow-cancel-sync",
+          "markdownDescription": "Enables the cancel_sync command"
+        },
+        {
           "description": "Enables the draft_reply command",
           "type": "string",
           "const": "allow-draft-reply",

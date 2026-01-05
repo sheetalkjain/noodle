@@ -74,6 +74,11 @@ identifier = "allow-request-exit"
 description = "Enables the request_exit command"
 commands.allow = ["request_exit"]
 
+[[permission]]
+identifier = "allow-cancel-sync"
+description = "Enables the cancel_sync command"
+commands.allow = ["cancel_sync"]
+
 [[permission-set]]
 identifier = "default"
 description = "Default permissions for noodle-ui"
@@ -82,6 +87,7 @@ permissions = [
     "allow-get-stats",
     "allow-get-graph",
     "allow-start-sync",
+    "allow-cancel-sync",
     "allow-get-logs",
     "allow-get-config",
     "allow-save-config",
