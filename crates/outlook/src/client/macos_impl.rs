@@ -92,9 +92,11 @@ tell application "Microsoft Outlook"
                 repeat with r in toList
                     if toRecips is not "" then set toRecips to toRecips & ", "
                     try
-                        set toRecips to toRecips & (address of r)
+                        set toRecips to toRecips & (address of (email address of r))
                     on error
-                        set toRecips to toRecips & (name of r)
+                        try
+                            set toRecips to toRecips & (name of r)
+                        end try
                     end try
                 end repeat
             end try
@@ -105,9 +107,11 @@ tell application "Microsoft Outlook"
                 repeat with r in ccList
                     if ccRecips is not "" then set ccRecips to ccRecips & ", "
                     try
-                        set ccRecips to ccRecips & (address of r)
+                        set ccRecips to ccRecips & (address of (email address of r))
                     on error
-                        set ccRecips to ccRecips & (name of r)
+                        try
+                            set ccRecips to ccRecips & (name of r)
+                        end try
                     end try
                 end repeat
             end try
