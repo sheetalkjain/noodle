@@ -9,7 +9,7 @@ use noodle_core::types::{
 use std::sync::Arc;
 use storage::qdrant::QdrantStorage;
 use storage::sqlite::SqliteStorage;
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use tokio::sync::RwLock;
@@ -44,25 +44,48 @@ impl ExtractionPipeline {
         let id = self.sqlite.save_email(&email).await?;
         email.id = id;
 
-        // 2. Extract facts using AI
-        let mut facts = self.extract_facts(&email).await?;
-        facts.email_id = id;
+        // 2. Extract and save entities from email headers (always runs, no AI needed)
+        // This populates the entity graph even if AI fails
+        if let Err(e) = self.extract_and_save_entities(&email).await {
+            warn!("Entity extraction failed for email {}: {}", email.id, e);
+        }
 
-        // 3. Save facts to SQLite
-        self.sqlite.save_facts(&facts).await?;
+        // 3. Extract facts using AI (non-fatal - log warning and continue if fails)
+        match self.extract_facts(&email).await {
+            Ok(mut facts) => {
+                facts.email_id = id;
+                // Save facts to SQLite
+                if let Err(e) = self.sqlite.save_facts(&facts).await {
+                    warn!("Failed to save facts for email {}: {}", email.id, e);
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "AI fact extraction failed for email '{}': {}",
+                    email.subject, e
+                );
+                // Continue processing - email is still saved, just without AI-extracted facts
+            }
+        }
 
-        // 4. Extract and save entities from email headers
-        self.extract_and_save_entities(&email).await?;
-
-        // 5. Generate embeddings
+        // 4. Generate embeddings (non-fatal - log warning and continue if fails)
         let ai = self.ai.read().await;
-        let embedding = ai.generate_embedding(&email.body_text).await?;
-
-        // 6. Persist to Qdrant
-        let payload = qdrant_client::Payload::new(); // Add metadata
-        self.qdrant
-            .upsert_email_vector(&email.store_id, &email.entry_id, embedding, payload)
-            .await?;
+        match ai.generate_embedding(&email.body_text).await {
+            Ok(embedding) => {
+                // 5. Persist to Qdrant
+                let payload = qdrant_client::Payload::new();
+                if let Err(e) = self
+                    .qdrant
+                    .upsert_email_vector(&email.store_id, &email.entry_id, embedding, payload)
+                    .await
+                {
+                    warn!("Failed to save embedding for email {}: {}", email.id, e);
+                }
+            }
+            Err(e) => {
+                warn!("Embedding generation failed for email {}: {}", email.id, e);
+            }
+        }
 
         info!("Successfully processed email: {}", email.id);
         Ok(())
