@@ -79,11 +79,23 @@ identifier = "allow-cancel-sync"
 description = "Enables the cancel_sync command"
 commands.allow = ["cancel_sync"]
 
+[[permission]]
+identifier = "allow-search-emails-filtered"
+description = "Enables the search_emails_filtered command"
+commands.allow = ["search_emails_filtered"]
+
+[[permission]]
+identifier = "allow-get-filter-options"
+description = "Enables the get_filter_options command"
+commands.allow = ["get_filter_options"]
+
 [[permission-set]]
 identifier = "default"
 description = "Default permissions for noodle-ui"
 permissions = [
     "allow-search-emails",
+    "allow-search-emails-filtered",
+    "allow-get-filter-options",
     "allow-get-stats",
     "allow-get-graph",
     "allow-start-sync",

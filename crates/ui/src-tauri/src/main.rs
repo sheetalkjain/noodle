@@ -75,6 +75,32 @@ async fn get_graph(state: State<'_, AppState>) -> Result<serde_json::Value, Stri
     state.sqlite.get_entities().await.map_err(|e| e.to_string())
 }
 
+/// Search emails with optional filters for drill-down and filtering UI.
+#[command]
+async fn search_emails_filtered(
+    state: State<'_, AppState>,
+    sentiment: Option<String>,
+    project: Option<String>,
+    urgency: Option<String>,
+    needs_response: Option<bool>,
+) -> Result<Vec<serde_json::Value>, String> {
+    state
+        .sqlite
+        .get_emails_filtered(sentiment, project, urgency, needs_response, 100)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get available filter options for populating dropdowns.
+#[command]
+async fn get_filter_options(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    state
+        .sqlite
+        .get_filter_options()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[command]
 async fn get_stats(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     state
@@ -547,6 +573,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             search_emails,
+            search_emails_filtered,
+            get_filter_options,
             get_stats,
             get_graph,
             start_sync,

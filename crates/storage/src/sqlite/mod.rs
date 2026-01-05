@@ -340,6 +340,150 @@ impl SqliteStorage {
             .collect())
     }
 
+    /// Get emails with optional filters for sentiment, project, urgency, etc.
+    pub async fn get_emails_filtered(
+        &self,
+        sentiment: Option<String>,
+        project: Option<String>,
+        urgency: Option<String>,
+        needs_response: Option<bool>,
+        limit: i64,
+    ) -> Result<Vec<serde_json::Value>> {
+        // Build dynamic WHERE clause
+        let mut conditions = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+
+        if let Some(s) = &sentiment {
+            conditions.push("LOWER(f.sentiment) = LOWER(?)");
+            params.push(s.clone());
+        }
+        if let Some(p) = &project {
+            conditions.push("f.client_or_project_json LIKE ?");
+            params.push(format!("%{}%", p));
+        }
+        if let Some(u) = &urgency {
+            conditions.push("LOWER(f.urgency) = LOWER(?)");
+            params.push(u.clone());
+        }
+        if let Some(nr) = needs_response {
+            conditions.push("f.needs_response = ?");
+            params.push(if nr { "1".to_string() } else { "0".to_string() });
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+
+        let query_str = format!(
+            r#"
+            SELECT 
+                e.id, e.subject, e.sender, e.received_at, e.body_text,
+                f.primary_type, f.intent, f.urgency, f.sentiment, f.client_or_project_json,
+                f.needs_response, f.waiting_on, f.due_by, f.risks_json, f.issues_json, f.blockers_json,
+                f.summary
+            FROM emails e
+            LEFT JOIN extracted_email_facts f ON e.id = f.email_id
+            {}
+            ORDER BY e.received_at DESC 
+            LIMIT ?
+            "#,
+            where_clause
+        );
+
+        // Build and execute query with dynamic bindings
+        let mut query = sqlx::query(&query_str);
+        for param in &params {
+            query = query.bind(param);
+        }
+        query = query.bind(limit);
+
+        let rows = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| noodle_core::error::NoodleError::Storage(e.to_string()))?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let client_project: Option<serde_json::Value> = row
+                    .get::<Option<String>, _>("client_or_project_json")
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                let risks: Option<serde_json::Value> = row
+                    .get::<Option<String>, _>("risks_json")
+                    .and_then(|s| serde_json::from_str(&s).ok());
+
+                serde_json::json!({
+                    "id": row.get::<i64, _>("id"),
+                    "subject": row.get::<String, _>("subject"),
+                    "sender": row.get::<String, _>("sender"),
+                    "received_at": row.get::<chrono::DateTime<chrono::Utc>, _>("received_at"),
+                    "body_text": row.get::<String, _>("body_text"),
+                    "primary_type": row.get::<Option<String>, _>("primary_type"),
+                    "intent": row.get::<Option<String>, _>("intent"),
+                    "urgency": row.get::<Option<String>, _>("urgency"),
+                    "sentiment": row.get::<Option<String>, _>("sentiment"),
+                    "needs_response": row.get::<Option<bool>, _>("needs_response"),
+                    "waiting_on": row.get::<Option<String>, _>("waiting_on"),
+                    "due_by": row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("due_by"),
+                    "summary": row.get::<Option<String>, _>("summary"),
+                    "client_or_project": client_project,
+                    "risks": risks
+                })
+            })
+            .collect())
+    }
+
+    /// Get distinct filter options for populating dropdowns.
+    pub async fn get_filter_options(&self) -> Result<serde_json::Value> {
+        // Get distinct sentiments
+        let sentiments: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT sentiment FROM extracted_email_facts WHERE sentiment IS NOT NULL ORDER BY sentiment"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        // Get distinct urgency levels
+        let urgencies: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT urgency FROM extracted_email_facts WHERE urgency IS NOT NULL ORDER BY urgency"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        // Get distinct projects from JSON field
+        let project_rows = sqlx::query(
+            "SELECT DISTINCT client_or_project_json FROM extracted_email_facts WHERE client_or_project_json IS NOT NULL"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        let mut projects: Vec<String> = project_rows
+            .iter()
+            .filter_map(|row| {
+                let json_str: Option<String> = row.get("client_or_project_json");
+                json_str.and_then(|s| {
+                    serde_json::from_str::<serde_json::Value>(&s)
+                        .ok()
+                        .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(String::from))
+                })
+            })
+            .filter(|s| s != "Unknown" && !s.is_empty())
+            .collect();
+        projects.sort();
+        projects.dedup();
+
+        Ok(serde_json::json!({
+            "sentiments": sentiments,
+            "urgencies": urgencies,
+            "projects": projects
+        }))
+    }
+
     pub async fn get_entities(&self) -> Result<serde_json::Value> {
         let nodes_rows = sqlx::query(
             "SELECT id, canonical_name as name, entity_type as kind FROM entities LIMIT 100",

@@ -34,6 +34,13 @@ function App() {
     const [availableModels, setAvailableModels] = useState<string[]>([])
     const [showExitConfirm, setShowExitConfirm] = useState(false)
 
+    // Filter state for email drill-down
+    const [sentimentFilter, setSentimentFilter] = useState<string | null>(null)
+    const [projectFilter, setProjectFilter] = useState<string | null>(null)
+    const [urgencyFilter, setUrgencyFilter] = useState<string | null>(null)
+    const [needsResponseFilter, setNeedsResponseFilter] = useState<boolean | null>(null)
+    const [filterOptions, setFilterOptions] = useState<any>({ sentiments: [], urgencies: [], projects: [] })
+
     const addLog = async (message: string, type: 'info' | 'error' | 'warn' = 'info') => {
         const timestamp = new Date().toISOString()
         const entry = { timestamp, level: type.toUpperCase(), source: 'FRONTEND', message }
@@ -63,6 +70,52 @@ function App() {
             console.error(`Failed to fetch data: ${error}`)
         }
     }
+
+    // Fetch available filter options for dropdowns
+    const fetchFilterOptions = async () => {
+        try {
+            const options = await invoke('get_filter_options')
+            setFilterOptions(options)
+        } catch (error: any) {
+            console.error(`Failed to fetch filter options: ${error}`)
+        }
+    }
+
+    // Fetch emails with applied filters
+    const fetchFilteredEmails = async () => {
+        try {
+            const results = await invoke('search_emails_filtered', {
+                sentiment: sentimentFilter,
+                project: projectFilter,
+                urgency: urgencyFilter,
+                needsResponse: needsResponseFilter
+            })
+            setEmails(results as any[])
+        } catch (error: any) {
+            console.error(`Failed to fetch filtered emails: ${error}`)
+        }
+    }
+
+    // Handle sentiment chart click for drill-down
+    const handleSentimentDrillDown = (sentiment: string) => {
+        if (sentiment === '' || sentiment === sentimentFilter) {
+            setSentimentFilter(null)
+        } else {
+            setSentimentFilter(sentiment)
+            setActiveTab('emails')  // Switch to emails tab to show filtered results
+        }
+    }
+
+    // Clear all filters
+    const clearAllFilters = () => {
+        setSentimentFilter(null)
+        setProjectFilter(null)
+        setUrgencyFilter(null)
+        setNeedsResponseFilter(null)
+    }
+
+    // Check if any filters are active
+    const hasActiveFilters = sentimentFilter || projectFilter || urgencyFilter || needsResponseFilter !== null
 
     const fetchConfig = async () => {
         try {
@@ -112,6 +165,7 @@ function App() {
     useEffect(() => {
         fetchStats()
         fetchConfig()
+        fetchFilterOptions()
 
         const unlistenPromise = listen('noodle://log', (event: any) => {
             const { message, level } = event.payload
@@ -163,12 +217,28 @@ function App() {
         }
     }, [])
 
+    // Refetch emails when any filter changes
+    useEffect(() => {
+        if (hasActiveFilters) {
+            fetchFilteredEmails()
+        } else if (hasLoadedInitialEmails) {
+            // If no filters and we've already loaded, refresh with no filters
+            handleSearch()
+        }
+    }, [sentimentFilter, projectFilter, urgencyFilter, needsResponseFilter])
+
     const handleSearch = async () => {
         addLog(`Searching for: ${searchQuery}`)
         try {
-            const results = await invoke('search_emails', { query: searchQuery })
-            setEmails(results as any[])
-            addLog(`Search returned ${(results as any[]).length} results`)
+            // If we have active filters, use filtered search
+            if (hasActiveFilters && !searchQuery.trim()) {
+                await fetchFilteredEmails()
+                addLog(`Filtered search returned ${emails.length} results`)
+            } else {
+                const results = await invoke('search_emails', { query: searchQuery })
+                setEmails(results as any[])
+                addLog(`Search returned ${(results as any[]).length} results`)
+            }
         } catch (error: any) {
             addLog(`Search failed: ${error}`, 'error')
         }
@@ -340,7 +410,11 @@ function App() {
                                         </h3>
                                     </div>
                                     <div className="p-4">
-                                        <SentimentChart data={stats.sentiments} />
+                                        <SentimentChart
+                                            data={stats.sentiments}
+                                            onSentimentClick={handleSentimentDrillDown}
+                                            selectedSentiment={sentimentFilter}
+                                        />
                                     </div>
                                 </div>
                                 <div className="space-y-6">
@@ -391,6 +465,102 @@ function App() {
 
                     {activeTab === 'emails' && (
                         <div className="grid grid-cols-1 gap-4 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
+                            {/* Filter Bar */}
+                            <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-medium text-zinc-400">Filters</h3>
+                                    {hasActiveFilters && (
+                                        <button
+                                            onClick={clearAllFilters}
+                                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                        >
+                                            Clear all filters
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    {/* Sentiment Filter */}
+                                    <select
+                                        value={sentimentFilter || ''}
+                                        onChange={(e) => setSentimentFilter(e.target.value || null)}
+                                        className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                    >
+                                        <option value="">All Sentiments</option>
+                                        {filterOptions.sentiments?.map((s: string) => (
+                                            <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                                        ))}
+                                    </select>
+
+                                    {/* Project Filter */}
+                                    <select
+                                        value={projectFilter || ''}
+                                        onChange={(e) => setProjectFilter(e.target.value || null)}
+                                        className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                    >
+                                        <option value="">All Projects</option>
+                                        {filterOptions.projects?.map((p: string) => (
+                                            <option key={p} value={p}>{p}</option>
+                                        ))}
+                                    </select>
+
+                                    {/* Urgency Filter */}
+                                    <select
+                                        value={urgencyFilter || ''}
+                                        onChange={(e) => setUrgencyFilter(e.target.value || null)}
+                                        className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                    >
+                                        <option value="">All Urgency</option>
+                                        {filterOptions.urgencies?.map((u: string) => (
+                                            <option key={u} value={u}>{u}</option>
+                                        ))}
+                                    </select>
+
+                                    {/* Needs Response Filter */}
+                                    <select
+                                        value={needsResponseFilter === null ? '' : needsResponseFilter ? 'true' : 'false'}
+                                        onChange={(e) => {
+                                            const val = e.target.value
+                                            setNeedsResponseFilter(val === '' ? null : val === 'true')
+                                        }}
+                                        className="bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                    >
+                                        <option value="">All Emails</option>
+                                        <option value="true">Action Required</option>
+                                        <option value="false">No Action Needed</option>
+                                    </select>
+                                </div>
+
+                                {/* Active filter indicators */}
+                                {hasActiveFilters && (
+                                    <div className="flex flex-wrap gap-2 pt-2">
+                                        {sentimentFilter && (
+                                            <span className="inline-flex items-center gap-1 text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full border border-blue-500/30">
+                                                Sentiment: {sentimentFilter.replace(/_/g, ' ')}
+                                                <button onClick={() => setSentimentFilter(null)} className="hover:text-white">×</button>
+                                            </span>
+                                        )}
+                                        {projectFilter && (
+                                            <span className="inline-flex items-center gap-1 text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded-full border border-purple-500/30">
+                                                Project: {projectFilter}
+                                                <button onClick={() => setProjectFilter(null)} className="hover:text-white">×</button>
+                                            </span>
+                                        )}
+                                        {urgencyFilter && (
+                                            <span className="inline-flex items-center gap-1 text-xs bg-amber-500/20 text-amber-400 px-2 py-1 rounded-full border border-amber-500/30">
+                                                Urgency: {urgencyFilter}
+                                                <button onClick={() => setUrgencyFilter(null)} className="hover:text-white">×</button>
+                                            </span>
+                                        )}
+                                        {needsResponseFilter !== null && (
+                                            <span className="inline-flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded-full border border-red-500/30">
+                                                {needsResponseFilter ? 'Action Required' : 'No Action Needed'}
+                                                <button onClick={() => setNeedsResponseFilter(null)} className="hover:text-white">×</button>
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             {emails.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-32 text-zinc-500 border-2 border-dashed border-zinc-800 rounded-3xl bg-zinc-900/20">
                                     <Search className="w-12 h-12 mb-4 text-zinc-700" />

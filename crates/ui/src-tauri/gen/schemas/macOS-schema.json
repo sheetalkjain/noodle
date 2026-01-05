@@ -213,6 +213,12 @@
           "markdownDescription": "Enables the get_email command"
         },
         {
+          "description": "Enables the get_filter_options command",
+          "type": "string",
+          "const": "allow-get-filter-options",
+          "markdownDescription": "Enables the get_filter_options command"
+        },
+        {
           "description": "Enables the get_graph command",
           "type": "string",
           "const": "allow-get-graph",
@@ -271,6 +277,12 @@
           "type": "string",
           "const": "allow-search-emails",
           "markdownDescription": "Enables the search_emails command"
+        },
+        {
+          "description": "Enables the search_emails_filtered command",
+          "type": "string",
+          "const": "allow-search-emails-filtered",
+          "markdownDescription": "Enables the search_emails_filtered command"
         },
         {
           "description": "Enables the start_sync command",
