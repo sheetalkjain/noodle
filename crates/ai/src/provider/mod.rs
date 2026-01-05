@@ -123,14 +123,34 @@ impl AiProvider for OllamaProvider {
             .await
             .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
 
-        let body: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| noodle_core::error::NoodleError::AI(e.to_string()))?;
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.map_err(|e| {
+            noodle_core::error::NoodleError::AI(format!("Failed to parse Ollama response: {}", e))
+        })?;
+
+        // Check for Ollama error response
+        if let Some(error) = body.get("error").and_then(|e| e.as_str()) {
+            return Err(noodle_core::error::NoodleError::AI(format!(
+                "Ollama error: {}",
+                error
+            )));
+        }
+
+        if !status.is_success() {
+            return Err(noodle_core::error::NoodleError::AI(format!(
+                "Ollama returned status {}: {:?}",
+                status, body
+            )));
+        }
 
         let content = body["message"]["content"]
             .as_str()
-            .ok_or_else(|| noodle_core::error::NoodleError::AI("Invalid Ollama response".into()))?
+            .ok_or_else(|| {
+                noodle_core::error::NoodleError::AI(format!(
+                    "Invalid Ollama response format. Expected message.content, got: {}",
+                    serde_json::to_string_pretty(&body).unwrap_or_else(|_| "unknown".to_string())
+                ))
+            })?
             .to_string();
 
         // approximate usage as ollama might specifically return it elsewhere
