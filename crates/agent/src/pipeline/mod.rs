@@ -250,13 +250,66 @@ Body: {}",
             needs_response: fact_data["needs_response"].as_bool().unwrap_or(false),
             waiting_on,
             summary: fact_data["summary"].as_str().unwrap_or("").into(),
-            key_points: serde_json::from_value(fact_data["key_points"].clone()).unwrap_or_default(),
-            risks: serde_json::from_value(fact_data["risks"].clone()).unwrap_or_default(),
-            issues: serde_json::from_value(fact_data["issues"].clone()).unwrap_or_default(),
-            blockers: serde_json::from_value(fact_data["blockers"].clone()).unwrap_or_default(),
-            open_questions: serde_json::from_value(fact_data["open_questions"].clone())
+            // Parse array fields safely - handle null/missing values
+            key_points: fact_data
+                .get("key_points")
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(v.clone()).ok()
+                    }
+                })
                 .unwrap_or_default(),
-            answered_questions: serde_json::from_value(fact_data["answered_questions"].clone())
+            risks: fact_data
+                .get("risks")
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(v.clone()).ok()
+                    }
+                })
+                .unwrap_or_default(),
+            issues: fact_data
+                .get("issues")
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(v.clone()).ok()
+                    }
+                })
+                .unwrap_or_default(),
+            blockers: fact_data
+                .get("blockers")
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(v.clone()).ok()
+                    }
+                })
+                .unwrap_or_default(),
+            open_questions: fact_data
+                .get("open_questions")
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(v.clone()).ok()
+                    }
+                })
+                .unwrap_or_default(),
+            answered_questions: fact_data
+                .get("answered_questions")
+                .and_then(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        serde_json::from_value(v.clone()).ok()
+                    }
+                })
                 .unwrap_or_default(),
             confidence: fact_data["confidence"].as_f64().unwrap_or(0.0) as f32,
             provenance: Provenance {
