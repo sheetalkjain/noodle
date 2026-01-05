@@ -84,12 +84,14 @@ function App() {
     // Fetch emails with applied filters
     const fetchFilteredEmails = async () => {
         try {
+            console.log('Fetching filtered emails with:', { sentimentFilter, projectFilter, urgencyFilter, needsResponseFilter })
             const results = await invoke('search_emails_filtered', {
-                sentiment: sentimentFilter,
-                project: projectFilter,
-                urgency: urgencyFilter,
-                needsResponse: needsResponseFilter
+                sentiment: sentimentFilter || null,
+                project: projectFilter || null,
+                urgency: urgencyFilter || null,
+                needs_response: needsResponseFilter
             })
+            console.log('Filtered results:', results)
             setEmails(results as any[])
         } catch (error: any) {
             console.error(`Failed to fetch filtered emails: ${error}`)
