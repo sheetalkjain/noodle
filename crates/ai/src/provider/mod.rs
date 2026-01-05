@@ -1,55 +1,102 @@
+//! AI provider implementations and abstractions.
+//!
+//! This module defines the `AiProvider` trait and provides implementations
+//! for different AI backends.
+//!
+//! # Implementations
+//! - [`OllamaProvider`] - Local Ollama server (default model: llama3)
+//! - [`OpenAICompatibleProvider`] - Any OpenAI-compatible API
+//!
+//! # Usage
+//! ```ignore
+//! let provider = OllamaProvider::new("http://localhost:11434".into(), None);
+//! let response = provider.chat_completion(request).await?;
+//! let embedding = provider.generate_embedding("some text").await?;
+//! ```
+
 pub mod creds;
 
 use async_trait::async_trait;
 use noodle_core::error::Result;
 use serde::{Deserialize, Serialize};
 
+/// Trait for AI providers that can do chat completion and embedding generation.
+///
+/// Implementations must be thread-safe (`Send + Sync`) for use in async contexts.
 #[async_trait]
 pub trait AiProvider: Send + Sync {
+    /// Generates a chat completion response from the AI model.
+    ///
+    /// Used for structured fact extraction from emails.
     async fn chat_completion(&self, request: ChatRequest) -> Result<ChatResponse>;
+
+    /// Generates a vector embedding for the given text.
+    ///
+    /// Used for semantic search in the vector database.
     async fn generate_embedding(&self, text: &str) -> Result<Vec<f32>>;
+
+    /// Lists available models from the provider.
     async fn list_models(&self) -> Result<Vec<String>>;
 }
 
+/// Request structure for chat completions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
+    /// Conversation messages (system, user, assistant)
     pub messages: Vec<Message>,
+    /// Sampling temperature (0.0 = deterministic, higher = more random)
     pub temperature: f32,
+    /// Optional response format (JSON or text)
     pub response_format: Option<ResponseFormat>,
-    // Optional: some providers need model explicitly in request
+    /// Model name (optional, uses provider default if not specified)
     pub model: Option<String>,
 }
 
+/// A single message in a chat conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
+    /// Role: "system", "user", or "assistant"
     pub role: String,
+    /// Message content
     pub content: String,
 }
 
+/// Response format specification for chat completions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ResponseFormat {
+    /// Request JSON output
     #[serde(rename = "json_object")]
     Json,
+    /// Request plain text output
     #[serde(rename = "text")]
     Text,
 }
 
+/// Response from a chat completion request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
+    /// The generated text content
     pub content: String,
+    /// Token usage statistics
     pub usage: Usage,
 }
 
+/// Token usage statistics from an AI request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
+    /// Tokens in the prompt/input
     pub prompt_tokens: u32,
+    /// Tokens in the completion/output
     pub completion_tokens: u32,
 }
 
+/// Available AI provider types.
 pub enum ProviderType {
+    /// Local Ollama server
     Ollama,
-    OpenAICompatible, // Lemonade, Foundry, etc.
+    /// OpenAI-compatible API (Lemonade, Foundry, etc.)
+    OpenAICompatible,
 }
 
 pub struct OllamaProvider {

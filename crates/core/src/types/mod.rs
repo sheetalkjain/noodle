@@ -1,29 +1,62 @@
+//! Core domain types for the Noodle application.
+//!
+//! This module defines all the data structures used throughout Noodle:
+//! - [`Email`] - Email message with full metadata
+//! - [`EmailFact`] - AI-extracted facts from an email
+//! - [`Attachment`] - Email attachment metadata
+//! - Various enums for classification (PrimaryType, Intent, Sentiment, etc.)
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// An email message with full metadata.
+///
+/// This struct represents an email as fetched from Outlook, including
+/// all headers, body content, and tracking fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Email {
+    /// Internal database ID (assigned after saving)
     pub id: i64,
+    /// Outlook store ID
     pub store_id: String,
+    /// Outlook entry ID (unique within store)
     pub entry_id: String,
+    /// Conversation/thread ID for grouping
     pub conversation_id: Option<String>,
+    /// Folder name (Inbox, Sent Items, etc.)
     pub folder: String,
+    /// Email subject line
     pub subject: String,
+    /// Sender email address
     pub sender: String,
+    /// To recipients (comma-separated)
     pub to: String,
+    /// CC recipients (comma-separated)
     pub cc: Option<String>,
+    /// BCC recipients (comma-separated, usually empty for received mail)
     pub bcc: Option<String>,
+    /// When the email was sent
     pub sent_at: DateTime<Utc>,
+    /// When the email was received
     pub received_at: DateTime<Utc>,
+    /// Plain text body content
     pub body_text: String,
+    /// HTML body content (if available)
     pub body_html: Option<String>,
+    /// Outlook importance level (0=low, 1=normal, 2=high)
     pub importance: i32,
+    /// Outlook categories (comma-separated)
     pub categories: Option<String>,
+    /// Outlook flags
     pub flags: Option<i32>,
+    /// Internet Message-ID header
     pub internet_message_id: Option<String>,
+    /// Last time this email was indexed
     pub last_indexed_at: DateTime<Utc>,
+    /// SHA-256 hash for deduplication
     pub hash: String,
+    /// Reason this email was excluded from processing (if any)
     pub excluded_reason: Option<String>,
 }
 

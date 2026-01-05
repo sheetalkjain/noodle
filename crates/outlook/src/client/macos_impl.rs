@@ -1,4 +1,20 @@
-// macOS-specific Outlook client using AppleScript
+//! macOS-specific Outlook client implementation using AppleScript.
+//!
+//! This module provides email fetching capabilities for Outlook on Mac by executing
+//! AppleScript commands via the `osascript` command-line tool. It extracts emails
+//! in tab-separated format for reliable parsing.
+//!
+//! # How It Works
+//! 1. Builds an AppleScript that queries Outlook for Mac
+//! 2. Iterates through all mail folders to find the one with matching name and most messages
+//! 3. Filters emails by received date
+//! 4. Extracts: id, subject, sender, to, cc, body, received time
+//! 5. Returns data as tab-separated values for parsing in Rust
+//!
+//! # Folder Handling
+//! Outlook for Mac often has duplicate folder names (e.g., a top-level empty "Inbox"
+//! and an account-specific "Inbox" with actual emails). This implementation finds
+//! the folder with the most messages to ensure we get the right one.
 
 use chrono::{DateTime, Utc};
 use noodle_core::error::{NoodleError, Result};
@@ -6,6 +22,11 @@ use noodle_core::types::Email;
 use std::process::Command;
 use tracing::{error, info, warn};
 
+/// macOS Outlook client that uses AppleScript for email access.
+///
+/// This client interacts with Microsoft Outlook for Mac through AppleScript,
+/// executed via the `osascript` command. It provides an async interface
+/// compatible with the Windows implementation.
 #[derive(Clone)]
 pub struct MacOutlookClient;
 

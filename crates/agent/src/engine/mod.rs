@@ -1,3 +1,16 @@
+//! Email synchronization engine.
+//!
+//! This module provides the `SyncManager` which orchestrates the email sync process:
+//! 1. Fetches emails from Outlook (Windows COM or macOS AppleScript)
+//! 2. Passes each email through the extraction pipeline
+//! 3. Handles periodic delta syncs for new emails
+//! 4. Supports cancellation via `CancellationToken`
+//!
+//! # Sync Flow
+//! 1. **Initial Scan**: Fetches emails from the last N days (configurable)
+//! 2. **Delta Scan**: Periodically checks for new emails (every N minutes)
+//! 3. **Cancellation**: Can be stopped at any time via the cancel token
+
 use crate::pipeline::ExtractionPipeline;
 use noodle_core::error::Result;
 use outlook::client::OutlookClient;
@@ -7,14 +20,38 @@ use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+/// Manages email synchronization from Outlook to local storage.
+///
+/// The `SyncManager` coordinates between the Outlook client, extraction pipeline,
+/// and storage layer to keep emails synchronized and processed.
+///
+/// # Features
+/// - Configurable history window (how many days to sync)
+/// - Configurable sync interval for delta updates
+/// - Cancellable sync operations
+/// - Progress logging to UI via Tauri events
+///
+/// # Example
+/// ```ignore
+/// let manager = SyncManager::new(pipeline, outlook, sqlite, app_handle, 30, 5);
+/// let manager = Arc::new(manager);
+/// manager.start_background_sync().await;
+/// ```
 pub struct SyncManager {
+    /// Pipeline for processing emails (entity extraction, AI facts, embeddings)
     pipeline: Arc<ExtractionPipeline>,
+    /// Outlook client for fetching emails
     outlook: Arc<OutlookClient>,
+    /// SQLite storage for persisting emails and logs
     #[allow(dead_code)]
     sqlite: Arc<SqliteStorage>,
+    /// Tauri app handle for emitting events to the UI
     app_handle: tauri::AppHandle,
+    /// Number of days of email history to sync
     history_days: i64,
+    /// Minutes between delta syncs
     sync_interval_mins: i64,
+    /// Token to cancel sync operations
     cancel_token: CancellationToken,
 }
 

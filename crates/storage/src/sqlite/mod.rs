@@ -1,3 +1,23 @@
+//! SQLite storage implementation for structured data.
+//!
+//! This module provides persistent storage for:
+//! - **Emails**: Full email content with metadata
+//! - **Facts**: AI-extracted structured facts from emails
+//! - **Entities**: People, organizations extracted from emails
+//! - **Edges**: Relationships between entities (sent_to, cc, etc.)
+//! - **Entity Mentions**: Links between emails and mentioned entities
+//! - **Logs**: Application logs for debugging
+//! - **Prompts**: Custom AI prompts
+//! - **Config**: Application configuration key-value pairs
+//!
+//! # Database Schema
+//! Uses SQLx with embedded migrations. Tables are created automatically
+//! on first connection via the `migrate()` method.
+//!
+//! # Connection Pooling
+//! Uses WAL journal mode for better concurrent read/write performance.
+//! Connection pool is limited to 5 connections.
+
 use chrono::{DateTime, Utc};
 use noodle_core::error::Result;
 use serde_json;
@@ -5,6 +25,7 @@ use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
 use std::path::Path;
 use tracing::info;
 
+/// Row type for email queries.
 #[derive(sqlx::FromRow)]
 pub struct EmailRow {
     pub id: i64,
@@ -14,7 +35,18 @@ pub struct EmailRow {
     pub body_text: String,
 }
 
+/// SQLite storage for all structured application data.
+///
+/// Provides async methods for storing and retrieving emails, entities,
+/// facts, and configuration. Uses SQLx with connection pooling.
+///
+/// # Example
+/// ```ignore
+/// let storage = SqliteStorage::new("app.db").await?;
+/// let email_id = storage.save_email(&email).await?;
+/// ```
 pub struct SqliteStorage {
+    /// SQLx connection pool
     pool: SqlitePool,
 }
 

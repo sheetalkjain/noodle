@@ -1,3 +1,25 @@
+//! Email extraction and processing pipeline.
+//!
+//! This module provides the `ExtractionPipeline` which processes emails through
+//! multiple stages to extract structured information.
+//!
+//! # Pipeline Stages
+//! 1. **Hash Computation**: Generate SHA-256 hash for deduplication
+//! 2. **Persistence**: Save email to SQLite database
+//! 3. **Entity Extraction**: Extract sender/recipient entities (no AI needed)
+//! 4. **AI Fact Extraction**: Use LLM to extract structured facts (optional, non-fatal)
+//! 5. **Embedding Generation**: Create vector embeddings for semantic search (optional)
+//! 6. **Vector Storage**: Save embeddings to Qdrant (optional)
+//!
+//! # Error Handling
+//! The pipeline is designed to be resilient:
+//! - Entity extraction runs first and never fails the whole pipeline
+//! - AI extraction is non-fatal - logs warnings and continues
+//! - Embedding generation is non-fatal - logs warnings and continues
+//!
+//! # Submodules
+//! - [`draft`] - Reply drafting functionality
+
 pub mod draft;
 
 use ai::provider::{AiProvider, ChatRequest, Message};
@@ -14,9 +36,27 @@ use uuid::Uuid;
 
 use tokio::sync::RwLock;
 
+/// Pipeline for processing emails through extraction and AI analysis.
+///
+/// The `ExtractionPipeline` coordinates between storage and AI providers
+/// to process incoming emails and extract structured information.
+///
+/// # Components
+/// - **SQLite**: Stores emails, entities, edges, and extracted facts
+/// - **Qdrant**: Stores vector embeddings for semantic search
+/// - **AI Provider**: Generates facts and embeddings (Ollama or OpenAI-compatible)
+///
+/// # Example
+/// ```ignore
+/// let pipeline = ExtractionPipeline::new(sqlite, qdrant, ai);
+/// pipeline.process_email(email).await?;
+/// ```
 pub struct ExtractionPipeline {
+    /// SQLite storage for emails, entities, and facts
     sqlite: Arc<SqliteStorage>,
+    /// Qdrant vector database for embeddings
     qdrant: Arc<QdrantStorage>,
+    /// AI provider (behind RwLock to allow hot-swapping)
     ai: Arc<RwLock<Arc<dyn AiProvider>>>,
 }
 
