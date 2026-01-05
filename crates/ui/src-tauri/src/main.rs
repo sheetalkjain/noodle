@@ -110,7 +110,7 @@ async fn start_sync(state: State<'_, AppState>) -> Result<(), String> {
         .await
         .unwrap_or(None)
         .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(90);
+        .unwrap_or(365);
 
     let sync_interval = state
         .sqlite

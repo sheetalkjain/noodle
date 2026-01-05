@@ -24,7 +24,7 @@ function App() {
         ollama_url: 'http://localhost:11434',
         model_name: 'llama3',
         sync_interval: '2',
-        history_days: '90',
+        history_days: '365',
         provider_type: 'ollama',
         api_key: '',
         confirm_exit: 'true',
